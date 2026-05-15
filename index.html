@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>全媒体内容合规检测助手</title>
+    <style>
+      :root {
+        --bg: #f5f4ef;
+        --surface: #fff;
+        --muted: #716b61;
+        --line: #ddd8cc;
+        --ink: #24211c;
+        --teal: #177f75;
+        --red: #b42318;
+        --amber: #b7791f;
+        --green: #0e624f;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+      }
+      .wrap { width: min(1440px, calc(100% - 28px)); margin: 0 auto; padding: 18px 0 28px; }
+      header { display: flex; justify-content: space-between; gap: 16px; align-items: center; padding: 10px 0 18px; }
+      h1, h2, h3, p { margin-top: 0; }
+      h1 { font-size: 28px; margin-bottom: 6px; }
+      .sub { color: var(--muted); margin: 0; line-height: 1.55; }
+      .grid { display: grid; grid-template-columns: minmax(330px, 430px) minmax(0, 1fr); gap: 18px; align-items: start; }
+      .panel { border: 1px solid var(--line); border-radius: 8px; background: var(--surface); box-shadow: 0 12px 30px rgba(45,39,27,.08); }
+      .input { position: sticky; top: 12px; max-height: calc(100vh - 24px); overflow: auto; }
+      .section { padding: 16px; border-bottom: 1px solid var(--line); }
+      .section:last-child { border-bottom: 0; }
+      label { display: block; color: #4a463e; font-size: 13px; font-weight: 800; margin: 12px 0 6px; }
+      textarea, input[type="text"], select {
+        width: 100%; border: 1px solid var(--line); border-radius: 6px; background: #fffefa; color: var(--ink);
+      }
+      textarea { min-height: 88px; resize: vertical; padding: 10px 11px; line-height: 1.55; }
+      input[type="text"], select { height: 40px; padding: 0 10px; }
+      .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+      .drop { border: 1.5px dashed #b8ad9a; border-radius: 8px; background: #faf8f0; padding: 18px; text-align: center; }
+      .drop strong { display: block; margin-bottom: 8px; }
+      .file-list { display: grid; gap: 8px; margin-top: 12px; }
+      .file { border: 1px solid var(--line); border-radius: 6px; padding: 9px; background: #fffefa; font-size: 13px; }
+      .platforms { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+      .platforms label { margin: 0; display: flex; align-items: center; gap: 8px; font-weight: 700; }
+      button, .link-button {
+        min-height: 40px; border: 0; border-radius: 6px; padding: 0 14px; font-weight: 800; cursor: pointer; text-decoration: none;
+      }
+      .primary { background: var(--teal); color: white; }
+      .secondary { background: #efe9dc; color: var(--ink); }
+      .ghost { background: transparent; border: 1px solid var(--line); color: var(--ink); }
+      .actions { display: flex; flex-wrap: wrap; gap: 10px; }
+      .report { padding: 18px; min-height: calc(100vh - 110px); }
+      .status { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; background: #fffefa; color: var(--muted); margin-bottom: 14px; line-height: 1.55; }
+      .status.ok { border-color: #b9dfd0; background: #eef8f3; color: var(--green); }
+      .status.warn { border-color: #f0d49a; background: #fff7e6; color: var(--amber); }
+      .status.err { border-color: #f2b6ad; background: #fff1ef; color: var(--red); }
+      pre { white-space: pre-wrap; line-height: 1.65; background: #1f2523; color: #f4f1e8; border-radius: 8px; padding: 16px; overflow: auto; min-height: 560px; }
+      .share { display: none; margin-bottom: 14px; }
+      .share a { color: var(--teal); overflow-wrap: anywhere; }
+      @media (max-width: 980px) { .grid { grid-template-columns: 1fr; } .input { position: static; max-height: none; } }
+      @media (max-width: 640px) { .two, .platforms { grid-template-columns: 1fr; } header { display: block; } }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <header>
+        <div>
+          <h1>全媒体内容合规检测助手</h1>
+          <p class="sub">上传图片、视频、音频，补充文案/字幕后，对比 Facebook、Instagram、微信视频号、小红书、YouTube 的审核风险。</p>
+        </div>
+        <div class="actions">
+          <button class="ghost" id="sampleBtn" type="button">载入示例</button>
+          <button class="secondary" id="clearBtn" type="button">清空</button>
+        </div>
+      </header>
+
+      <div class="grid">
+        <section class="panel input">
+          <div class="section">
+            <h2>素材上传</h2>
+            <div class="drop">
+              <strong>选择图片、视频或音频</strong>
+              <input id="files" type="file" accept="image/*,video/*,audio/*" multiple />
+              <p class="sub">视频会在浏览器里自动抽取关键帧；音频建议同时粘贴字幕或口播稿。</p>
+            </div>
+            <div class="file-list" id="fileList"></div>
+          </div>
+
+          <div class="section">
+            <h2>内容信息</h2>
+            <label for="text">广告/正文文案</label>
+            <textarea id="text" placeholder="粘贴广告文案、标题、描述、落地页核心信息"></textarea>
+            <label for="transcript">字幕/口播稿/音频转写</label>
+            <textarea id="transcript" placeholder="音频或视频的口播稿，越完整越接近真实审核结果"></textarea>
+            <label for="notes">画面说明/补充信息</label>
+            <textarea id="notes" placeholder="例如：画面有前后对比、二维码、明星同款字样、产品包装、字幕等"></textarea>
+            <div class="two">
+              <div>
+                <label for="industry">行业</label>
+                <select id="industry">
+                  <option>通用内容/品牌</option>
+                  <option>美妆护肤</option>
+                  <option>医疗健康/保健</option>
+                  <option>金融/投资/贷款</option>
+                  <option>教育培训</option>
+                  <option>食品饮料</option>
+                  <option>本地生活</option>
+                  <option>游戏/抽奖</option>
+                  <option>酒类</option>
+                </select>
+              </div>
+              <div>
+                <label for="contentType">内容类型</label>
+                <select id="contentType">
+                  <option>付费广告</option>
+                  <option>自媒体内容</option>
+                  <option>达人商业合作</option>
+                  <option>带货/商品推广</option>
+                </select>
+              </div>
+            </div>
+            <label for="region">投放/发布地区</label>
+            <input id="region" type="text" value="中国大陆 / 美国" />
+          </div>
+
+          <div class="section">
+            <h2>检测平台</h2>
+            <div class="platforms">
+              <label><input type="checkbox" value="facebook" checked /> Facebook</label>
+              <label><input type="checkbox" value="instagram" checked /> Instagram</label>
+              <label><input type="checkbox" value="wechat" checked /> 微信视频号</label>
+              <label><input type="checkbox" value="rednote" checked /> 小红书</label>
+              <label><input type="checkbox" value="youtube" checked /> YouTube</label>
+            </div>
+          </div>
+
+          <div class="section">
+            <button class="primary" id="runBtn" type="button">开始检测并生成报告</button>
+          </div>
+        </section>
+
+        <section class="panel report">
+          <div class="status" id="status">等待上传素材或输入文案。报告会以 Markdown 形式生成，可复制和分享。</div>
+          <div class="share" id="shareBox">分享链接：<a id="shareLink" href="#" target="_blank" rel="noreferrer"></a></div>
+          <div class="actions" style="margin-bottom: 12px">
+            <button class="ghost" id="copyBtn" type="button">复制 Markdown</button>
+            <button class="ghost" type="button" onclick="window.print()">打印</button>
+          </div>
+          <pre id="report">报告将在这里显示。</pre>
+        </section>
+      </div>
+    </main>
+
+    <script>
+      const state = { files: [], assets: [], markdown: "" };
+      const el = (id) => document.getElementById(id);
+
+      el("files").addEventListener("change", async (event) => {
+        state.files = Array.from(event.target.files || []);
+        renderFiles("正在读取素材...");
+        state.assets = await buildAssets(state.files);
+        renderFiles();
+      });
+
+      el("runBtn").addEventListener("click", runAudit);
+      el("copyBtn").addEventListener("click", async () => {
+        await navigator.clipboard.writeText(state.markdown || el("report").textContent || "");
+        setStatus("ok", "Markdown 已复制。");
+      });
+      el("clearBtn").addEventListener("click", () => location.reload());
+      el("sampleBtn").addEventListener("click", () => {
+        el("text").value = "你是不是因为脱发和痘痘一直自卑？这款医美级修复精华 7 天见效，100% 无副作用，前后对比肉眼可见。今天私信加微领取官方补贴名额。";
+        el("transcript").value = "老师说这个方法可以根治痘痘，无效退款，最后 50 个名额。";
+        el("notes").value = "画面包含面部前后对比、二维码、主播口播引导加微信，背景出现明星同款字样。";
+        el("industry").value = "医疗健康/保健";
+      });
+
+      async function runAudit() {
+        const payload = {
+          text: el("text").value.trim(),
+          transcript: el("transcript").value.trim(),
+          notes: el("notes").value.trim(),
+          industry: el("industry").value,
+          contentType: el("contentType").value,
+          region: el("region").value.trim(),
+          platforms: Array.from(document.querySelectorAll(".platforms input:checked")).map((item) => item.value),
+          files: state.files.map(fileMeta),
+          assets: state.assets,
+        };
+
+        setStatus("warn", "正在调用 AI 生成合规报告，图片和视频关键帧会一起送审...");
+        el("runBtn").disabled = true;
+        try {
+          const response = await fetch("/api/audit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          const report = await response.json();
+          if (!response.ok) throw new Error(report.error || "检测失败");
+          state.markdown = report.markdown;
+          el("report").textContent = report.markdown;
+          el("shareBox").style.display = "block";
+          el("shareLink").href = report.shareUrl;
+          el("shareLink").textContent = report.shareUrl;
+          setStatus(report.aiEnabled ? "ok" : "warn", report.aiEnabled ? "AI 报告已生成。" : "已生成本地规则预审报告。");
+        } catch (error) {
+          setStatus("err", error.message || "检测失败");
+        } finally {
+          el("runBtn").disabled = false;
+        }
+      }
+
+      async function buildAssets(files) {
+        const assets = [];
+        for (const file of files) {
+          if (file.type.startsWith("image/")) {
+            assets.push({ name: file.name, kind: "image", dataUrl: await imageToDataUrl(file) });
+          }
+          if (file.type.startsWith("video/")) {
+            const frames = await videoFrames(file);
+            frames.forEach((dataUrl, index) => assets.push({ name: `${file.name} frame ${index + 1}`, kind: "video-frame", dataUrl }));
+          }
+        }
+        return assets.slice(0, 24);
+      }
+
+      async function imageToDataUrl(file) {
+        const url = await readFile(file);
+        const img = await loadImage(url);
+        const canvas = document.createElement("canvas");
+        const max = 1280;
+        const scale = Math.min(1, max / Math.max(img.width, img.height));
+        canvas.width = Math.max(1, Math.round(img.width * scale));
+        canvas.height = Math.max(1, Math.round(img.height * scale));
+        canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+        return canvas.toDataURL("image/jpeg", 0.78);
+      }
+
+      async function videoFrames(file) {
+        const url = URL.createObjectURL(file);
+        const video = document.createElement("video");
+        video.src = url;
+        video.muted = true;
+        video.preload = "metadata";
+        await once(video, "loadedmetadata");
+        const duration = Number.isFinite(video.duration) ? video.duration : 1;
+        const times = [Math.min(1, duration * 0.1), duration * 0.45, duration * 0.8].filter((time, index, arr) => time < duration && arr.indexOf(time) === index);
+        const frames = [];
+        for (const time of times) {
+          video.currentTime = time;
+          await once(video, "seeked");
+          const canvas = document.createElement("canvas");
+          const max = 960;
+          const scale = Math.min(1, max / Math.max(video.videoWidth || 1, video.videoHeight || 1));
+          canvas.width = Math.max(1, Math.round((video.videoWidth || 1) * scale));
+          canvas.height = Math.max(1, Math.round((video.videoHeight || 1) * scale));
+          canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
+          frames.push(canvas.toDataURL("image/jpeg", 0.72));
+        }
+        URL.revokeObjectURL(url);
+        return frames;
+      }
+
+      function renderFiles(message = "") {
+        el("fileList").innerHTML = message ? `<div class="file">${message}</div>` : state.files.map((file) => `<div class="file"><strong>${escapeHtml(file.name)}</strong><br>${escapeHtml(file.type || "未知类型")} · ${formatBytes(file.size)}</div>`).join("");
+      }
+
+      function fileMeta(file) {
+        return { name: file.name, type: file.type, size: file.size, kind: (file.type.split("/")[0] || "file") };
+      }
+
+      function readFile(file) {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+      }
+
+      function loadImage(src) {
+        return new Promise((resolve, reject) => {
+          const img = new Image();
+          img.onload = () => resolve(img);
+          img.onerror = reject;
+          img.src = src;
+        });
+      }
+
+      function once(target, eventName) {
+        return new Promise((resolve, reject) => {
+          target.addEventListener(eventName, resolve, { once: true });
+          target.addEventListener("error", reject, { once: true });
+        });
+      }
+
+      function setStatus(type, text) {
+        el("status").className = `status ${type || ""}`;
+        el("status").textContent = text;
+      }
+
+      function formatBytes(bytes) {
+        if (!bytes) return "0 B";
+        const units = ["B", "KB", "MB", "GB"];
+        const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+        return `${(bytes / 1024 ** index).toFixed(index ? 1 : 0)} ${units[index]}`;
+      }
+
+      function escapeHtml(value) {
+        return String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[char]));
+      }
+    </script>
+  </body>
+</html>
