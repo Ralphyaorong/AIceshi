@@ -3,10 +3,10 @@
   "version": "2.1.0",
   "private": true,
   "description": "Shareable all-media compliance audit website for Facebook, Instagram, WeChat Channels, RedNote, and YouTube.",
-  "main": "server.js",
+  "main": "server-auth-wrapper.js",
   "scripts": {
-    "start": "node server.js",
-    "check": "node --check server.js"
+    "start": "node server-auth-wrapper.js",
+    "check": "node --check server.js && node --check server-auth-wrapper.js"
   },
   "engines": {
     "node": ">=20"
