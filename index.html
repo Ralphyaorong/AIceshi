@@ -149,6 +149,13 @@
         background: #4338ca;
       }
 
+      .action-primary {
+        min-width: 132px;
+        min-height: 52px;
+        border-radius: 14px;
+        padding: 0 18px;
+      }
+
       .secondary {
         background: #fff;
         color: var(--text);
@@ -409,6 +416,87 @@
         color: var(--muted);
         line-height: 1.7;
         font-size: 14px;
+      }
+
+      .compare-empty {
+        min-height: 520px;
+        display: grid;
+        place-items: center;
+        border: 1px dashed var(--line-strong);
+        border-radius: 18px;
+        background: linear-gradient(180deg, #fcfdff 0%, #f7f9ff 100%);
+        padding: 28px;
+        text-align: center;
+      }
+
+      .compare-empty strong {
+        display: block;
+        font-size: 16px;
+        margin-bottom: 10px;
+      }
+
+      .compare-empty p {
+        max-width: 360px;
+        color: var(--muted);
+        line-height: 1.7;
+        font-size: 14px;
+      }
+
+      .compare-list {
+        display: grid;
+        gap: 14px;
+      }
+
+      .compare-card {
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: #fff;
+        overflow: hidden;
+      }
+
+      .compare-card-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: flex-start;
+        padding: 16px 18px 0;
+      }
+
+      .compare-card-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 10px 18px 0;
+      }
+
+      .compare-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+        padding: 16px 18px 18px;
+      }
+
+      .compare-column {
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 14px;
+        background: var(--surface-soft);
+        display: grid;
+        gap: 8px;
+      }
+
+      .compare-column strong {
+        font-size: 12px;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.02em;
+      }
+
+      .compare-column p {
+        font-size: 13px;
+        line-height: 1.7;
+        color: #334155;
+        white-space: pre-wrap;
       }
 
       .preview-card {
@@ -855,7 +943,7 @@
         <div class="header-actions">
           <button class="ghost" id="sampleBtn" type="button">载入示例</button>
           <button class="secondary" id="clearBtn" type="button">清空</button>
-          <button class="primary" id="runBtn" type="button">生成报告</button>
+          <button class="primary action-primary" id="runBtn" type="button">生成报告</button>
         </div>
       </header>
 
@@ -888,6 +976,14 @@
                   <label class="file-trigger" for="imageInput">选择图片</label>
                   <input class="file-input" id="imageInput" type="file" accept="image/*" multiple />
                 </div>
+                <div class="upload-row">
+                  <div>
+                    <strong>上传文档</strong>
+                    <p>支持 DOC、DOCX、PPT、PPTX、XLS、XLSX、CSV、TXT 等资料，用于补充审查背景。</p>
+                  </div>
+                  <label class="file-trigger" for="docInput">选择文件</label>
+                  <input class="file-input" id="docInput" type="file" accept=".doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.txt,.md,.pdf" multiple />
+                </div>
               </div>
             </div>
             <div class="panel-section">
@@ -912,16 +1008,8 @@
               </div>
               <div class="field-grid">
                 <div class="field-group">
-                  <label class="field-label" for="text">标题 / 广告正文</label>
-                  <textarea id="text" placeholder="粘贴标题、广告正文、图文说明、广告卖点或落地页核心表达。"></textarea>
-                </div>
-                <div class="field-group">
-                  <label class="field-label" for="transcript">字幕 / 口播稿</label>
-                  <textarea id="transcript" placeholder="粘贴视频字幕、主播口播稿或完整转写内容。"></textarea>
-                </div>
-                <div class="field-group">
-                  <label class="field-label" for="notes">画面说明 / 补充信息</label>
-                  <textarea id="notes" placeholder="例如：前后对比画面、二维码、数据图表、商品包装、封面文案、结尾引导动作。"></textarea>
+                  <label class="field-label" for="text">内容文本</label>
+                  <textarea id="text" placeholder="将标题、广告正文、字幕、口播稿、画面说明和补充信息统一粘贴到这里。"></textarea>
                 </div>
               </div>
             </div>
@@ -982,18 +1070,18 @@
           </section>
         </aside>
 
-        <!-- ContentPreview -->
+        <!-- ComparisonPanel -->
         <section class="panel preview-panel">
           <div class="panel-section">
             <div class="panel-head">
               <div>
-                <h2>内容预览</h2>
-                <p class="desc">审查前先确认画面、文案、字幕和补充信息是否齐全。</p>
+                <h2>修改对比</h2>
+                <p class="desc">生成报告后，这里会按问题点展示原表达、风险原因和建议修改，便于直接改稿。</p>
               </div>
-              <div class="subtle" id="previewMeta">0 项内容</div>
+              <div class="subtle" id="comparisonMeta">0 条修改建议</div>
             </div>
           </div>
-          <div class="preview-body" id="previewBody"></div>
+          <div class="preview-body" id="comparisonBody"></div>
         </section>
 
         <!-- Result Column -->
@@ -1170,17 +1258,16 @@
       const elements = {
         imageInput: document.getElementById("imageInput"),
         videoInput: document.getElementById("videoInput"),
+        docInput: document.getElementById("docInput"),
         text: document.getElementById("text"),
-        transcript: document.getElementById("transcript"),
-        notes: document.getElementById("notes"),
         industry: document.getElementById("industry"),
         contentType: document.getElementById("contentType"),
         regionChips: document.getElementById("regionChips"),
         regionCustom: document.getElementById("regionCustom"),
         platformChips: document.getElementById("platformChips"),
         fileList: document.getElementById("fileList"),
-        previewBody: document.getElementById("previewBody"),
-        previewMeta: document.getElementById("previewMeta"),
+        comparisonBody: document.getElementById("comparisonBody"),
+        comparisonMeta: document.getElementById("comparisonMeta"),
         statusBanner: document.getElementById("statusBanner"),
         riskSummaryCard: document.getElementById("riskSummaryCard"),
         platformRiskList: document.getElementById("platformRiskList"),
@@ -1196,15 +1283,16 @@
       bindEvents();
       renderSelectors();
       renderFiles();
-      renderPreview();
+      renderComparison();
       renderResults();
 
       function bindEvents() {
         elements.imageInput.addEventListener("change", syncFilesFromInputs);
         elements.videoInput.addEventListener("change", syncFilesFromInputs);
-        [elements.text, elements.transcript, elements.notes, elements.regionCustom].forEach((node) => {
+        elements.docInput.addEventListener("change", syncFilesFromInputs);
+        [elements.text, elements.regionCustom].forEach((node) => {
           node.addEventListener("input", () => {
-            renderPreview();
+            renderComparison();
             if (!state.result) renderResults();
           });
         });
@@ -1235,7 +1323,7 @@
             if (state.regions.has(region)) state.regions.delete(region);
             else state.regions.add(region);
             renderSelectors();
-            renderPreview();
+            renderComparison();
             if (!state.result) renderResults();
           });
         });
@@ -1260,13 +1348,14 @@
         state.files = [
           ...Array.from(elements.imageInput.files || []),
           ...Array.from(elements.videoInput.files || []),
+          ...Array.from(elements.docInput.files || []),
         ];
 
         renderFiles("正在读取素材...");
-        renderPreview();
+        renderComparison();
         state.assets = await buildAssets(state.files);
         renderFiles();
-        renderPreview();
+        renderComparison();
         if (!state.result) renderResults();
       }
 
@@ -1318,8 +1407,8 @@
       function buildPayload() {
         return {
           text: elements.text.value.trim(),
-          transcript: elements.transcript.value.trim(),
-          notes: elements.notes.value.trim(),
+          transcript: "",
+          notes: "",
           industry: elements.industry.value,
           contentType: elements.contentType.value,
           region: getRegionValue(),
@@ -1345,7 +1434,7 @@
         }
 
         if (!state.files.length) {
-          elements.fileList.innerHTML = `<div class="helper-card"><strong>暂未上传素材</strong><p>可上传视频、图片，也可仅粘贴文案、字幕和画面说明开始审查。</p></div>`;
+          elements.fileList.innerHTML = `<div class="helper-card"><strong>暂未上传素材</strong><p>可上传视频、图片、文档，也可仅粘贴内容文本开始审查。</p></div>`;
           return;
         }
 
@@ -1364,38 +1453,11 @@
           .join("");
       }
 
-      function renderPreview() {
-        const cards = [];
-        const textValue = elements.text.value.trim();
-        const transcriptValue = elements.transcript.value.trim();
-        const notesValue = elements.notes.value.trim();
-
-        if (textValue) cards.push(renderPreviewTextCard("标题 / 广告正文", textValue, `${textValue.length} 字`));
-        if (transcriptValue) cards.push(renderPreviewTextCard("字幕 / 口播稿", transcriptValue, `${transcriptValue.length} 字`));
-        if (notesValue) cards.push(renderPreviewTextCard("画面说明 / 补充信息", notesValue, `${notesValue.length} 字`));
-
-        if (state.files.length) {
-          cards.push(`
-            <section class="preview-card">
-              <div class="preview-card-head">
-                <h3>上传素材</h3>
-                <div class="subtle">${state.files.length} 个文件</div>
-              </div>
-              <div class="preview-card-body">
-                <div class="preview-asset-grid">
-                  ${state.files.map(renderAssetPreview).join("")}
-                </div>
-              </div>
-            </section>
-          `);
-        }
-
-        const totalItems = cards.length;
-        elements.previewMeta.textContent = `${totalItems} 项内容`;
-
-        if (!cards.length) {
-          elements.previewBody.innerHTML = `
-            <div class="preview-empty">
+      function renderComparison(result = state.result) {
+        if (!result || !result.issues?.length) {
+          elements.comparisonMeta.textContent = "0 条修改建议";
+          elements.comparisonBody.innerHTML = `
+            <div class="compare-empty">
               <div>
                 <strong>Upload or paste your content to start a pre-publish compliance review.</strong>
                 <p>上传素材或粘贴文案，开始发布前风险审查。</p>
@@ -1405,21 +1467,60 @@
           return;
         }
 
-        elements.previewBody.innerHTML = cards.join("");
+        const items = buildComparisonItems(result);
+        elements.comparisonMeta.textContent = `${items.length} 条修改建议`;
+        elements.comparisonBody.innerHTML = `
+          <div class="compare-list">
+            ${items
+              .map(
+                (item, index) => `
+                  <article class="compare-card">
+                    <div class="compare-card-head">
+                      <div>
+                        <div class="rewrite-title">修改项 ${index + 1} · ${escapeHtml(item.title || "重点风险")}</div>
+                        <div class="subtle">${escapeHtml(item.reason || "请根据问题位置和证据调整表达。")}</div>
+                      </div>
+                      <span class="risk-pill ${riskClass(item.level)}">${escapeHtml(item.level)}</span>
+                    </div>
+                    <div class="compare-card-meta">
+                      <span class="mini-pill">${escapeHtml(item.location || "整体内容")}</span>
+                      ${(item.platforms || []).map((platform) => `<span class="mini-pill">${escapeHtml(platform)}</span>`).join("")}
+                    </div>
+                    <div class="compare-grid">
+                      <div class="compare-column">
+                        <strong>问题表达 / 风险证据</strong>
+                        <p>${escapeHtml(item.original || (item.evidence || []).join("、") || "当前结果未定位到明确原文片段。")}</p>
+                      </div>
+                      <div class="compare-column">
+                        <strong>建议修改</strong>
+                        <p>${escapeHtml(item.suggested || item.suggestion || "建议改为更克制的表达，并补充来源、限制条件和适用范围。")}</p>
+                      </div>
+                    </div>
+                  </article>
+                `,
+              )
+              .join("")}
+          </div>
+        `;
       }
 
-      function renderPreviewTextCard(title, body, meta) {
-        return `
-          <section class="preview-card">
-            <div class="preview-card-head">
-              <h3>${escapeHtml(title)}</h3>
-              <div class="subtle">${escapeHtml(meta)}</div>
-            </div>
-            <div class="preview-card-body">
-              <p>${escapeHtml(body)}</p>
-            </div>
-          </section>
-        `;
+      function buildComparisonItems(result) {
+        const rewrites = result.rewrites || [];
+        const issues = result.issues || [];
+        return issues.map((issue, index) => {
+          const rewrite = rewrites[index] || {};
+          return {
+            title: rewrite.title || issue.title,
+            level: rewrite.level || issue.level || "Medium",
+            location: rewrite.location || issue.location,
+            platforms: rewrite.platforms || issue.platforms || [],
+            reason: rewrite.reason || issue.reason,
+            evidence: rewrite.evidence || issue.evidence || [],
+            original: rewrite.original,
+            suggested: rewrite.suggested,
+            suggestion: issue.suggestion,
+          };
+        });
       }
 
       function renderAssetPreview(file) {
@@ -1467,6 +1568,7 @@
         renderPlatformRisks(result);
         renderIssues(result);
         renderRewrites(result);
+        renderComparison(result);
         renderTabs(result);
       }
 
@@ -1659,6 +1761,11 @@
 
         const rewrites = findings.slice(0, 4).map((item) => ({
           level: item.level,
+          title: item.title,
+          location: item.location,
+          reason: item.reason,
+          evidence: item.evidence,
+          platforms: selectedPlatforms.map(platformLabel),
           original: item.original,
           suggested: item.suggested,
         }));
@@ -1678,11 +1785,7 @@
 
       function scanClientRules(payload) {
         const findings = [];
-        const textAreas = [
-          { key: "text", label: "标题 / 广告正文", value: payload.text || "" },
-          { key: "transcript", label: "字幕 / 口播稿", value: payload.transcript || "" },
-          { key: "notes", label: "画面说明 / 补充信息", value: payload.notes || "" },
-        ];
+        const textAreas = [{ key: "text", label: "内容文本", value: payload.text || "" }];
 
         for (const rule of CLIENT_RULES) {
           const matches = [];
@@ -1711,12 +1814,12 @@
           }
         }
 
-        if ((payload.notes || "").includes("二维码")) {
+        if ((payload.text || "").includes("二维码")) {
           findings.push({
             title: "画面可能包含站外引导元素",
             level: "Medium",
-            location: "画面说明 / 补充信息",
-            evidence: ["画面说明提到二维码"],
+            location: "内容文本",
+            evidence: ["文本提到二维码"],
             suggestion: "确认二维码用途，避免将用户直接导向站外私下交易或未披露的转化路径。",
             reason: "二维码、私信引导和站外下单路径会提高限流和审核失败风险。",
             original: "画面包含二维码或站外引导元素",
@@ -1781,7 +1884,7 @@
             level = "Medium";
           }
 
-          if (!payload.text && !payload.transcript && findings.length === 0) {
+          if (!payload.text && findings.length === 0) {
             level = "Low";
           }
 
@@ -1823,27 +1926,22 @@
 
       function loadSample() {
         elements.text.value =
-          "2026 澳洲预算案后，房产投资人必须马上调整策略。现在立刻取消负扣税，房价会暴跌，抓紧咨询获取方案。";
-        elements.transcript.value =
-          "这条视频会告诉你预算案调整后房价会怎么走，哪些投资人会受到影响，以及为什么现在必须马上处理。";
-        elements.notes.value =
-          "画面包含政策解读图卡、房价走势箭头、结尾咨询引导，以及一页带有二维码的联系方式页。";
+          "2026 澳洲预算案后，房产投资人必须马上调整策略。现在立刻取消负扣税，房价会暴跌，抓紧咨询获取方案。\n\n字幕 / 口播稿：这条视频会告诉你预算案调整后房价会怎么走，哪些投资人会受到影响，以及为什么现在必须马上处理。\n\n补充信息：画面包含政策解读图卡、房价走势箭头、结尾咨询引导，以及一页带有二维码的联系方式页。";
         elements.industry.value = "金融 / 投资 / 贷款";
         elements.contentType.value = "自媒体发布";
         state.regions = new Set(REGION_OPTIONS);
         elements.regionCustom.value = "";
         state.platforms = new Set(["facebook", "instagram", "wechat", "rednote", "youtube", "metaads"]);
         renderSelectors();
-        renderPreview();
+        renderComparison();
         if (!state.result) renderResults();
       }
 
       function clearWorkspace() {
         elements.imageInput.value = "";
         elements.videoInput.value = "";
+        elements.docInput.value = "";
         elements.text.value = "";
-        elements.transcript.value = "";
-        elements.notes.value = "";
         elements.industry.value = "通用内容 / 品牌";
         elements.contentType.value = "自媒体发布";
         elements.regionCustom.value = "";
@@ -1857,7 +1955,7 @@
         elements.shareCard.hidden = true;
         renderSelectors();
         renderFiles();
-        renderPreview();
+        renderComparison();
         setStatus("", "已清空当前内容。可重新上传素材或粘贴文案。");
         renderResults();
       }
@@ -1916,8 +2014,10 @@
 
       function fileMeta(file) {
         const prefix = file.type.split("/")[0] || "file";
-        const kind = prefix === "image" || prefix === "video" ? prefix : "file";
-        const kindLabel = kind === "image" ? "图片" : kind === "video" ? "视频" : "文件";
+        const extension = (file.name.split(".").pop() || "").toLowerCase();
+        const docExtensions = ["doc", "docx", "ppt", "pptx", "xls", "xlsx", "csv", "txt", "md", "pdf"];
+        const kind = prefix === "image" || prefix === "video" ? prefix : docExtensions.includes(extension) ? "document" : "file";
+        const kindLabel = kind === "image" ? "图片" : kind === "video" ? "视频" : kind === "document" ? "文档" : "文件";
         return { name: file.name, type: file.type, size: file.size, kind, kindLabel };
       }
 

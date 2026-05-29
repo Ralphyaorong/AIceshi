@@ -27,7 +27,7 @@ const aiBaseUrl =
     ? process.env.BAILIAN_BASE_URL || "https://dashscope.aliyuncs.com/compatible-mode/v1"
     : process.env.OPENAI_BASE_URL || "https://api.openai.com/v1";
 const defaultBailianPrimaryModel = "qwen3.5-omni-plus-2026-03-15";
-const defaultBailianFallbackModels = ["qwen3.5-omni-flash", "qwen-vl-plus", "qwen-vl-plus-latest"];
+const defaultBailianFallbackModels = ["qwen3.5-omni-flash", "qwen3-omni-flash-2025-12-01", "qwen3-omni-flash", "qwen-vl-plus", "qwen-vl-plus-latest"];
 const aiModelCandidates =
   aiProvider === "bailian"
     ? resolveBailianModels()
@@ -395,6 +395,11 @@ function buildStructuredRewrites(localFindings, payload) {
   const source = payload.text || payload.transcript || payload.notes || "";
   return localFindings.slice(0, 4).map((item) => ({
     level: normalizeRiskLevel(item.level),
+    title: item.title,
+    location: detectIssueLocation(payload, item.evidence || []),
+    platforms: (payload.platforms || []).map((id) => platforms[id] || id),
+    reason: itemReason(item.title),
+    evidence: item.evidence || [],
     original: (item.evidence || []).join("；") || source.slice(0, 120) || "当前内容缺少可直接定位的原文片段",
     suggested: rewriteSuggestion(item, payload),
   }));
@@ -412,7 +417,6 @@ function detectIssueLocation(payload, evidence) {
   if (joinedEvidence && String(payload.text || "").includes(joinedEvidence)) return "标题 / 广告正文";
   if (joinedEvidence && String(payload.transcript || "").includes(joinedEvidence)) return "字幕 / 口播稿";
   if (joinedEvidence && String(payload.notes || "").includes(joinedEvidence)) return "画面说明 / 补充信息";
-  if ((payload.files || []).some((file) => file.kind === "audio") && !payload.transcript) return "字幕 / 口播稿";
   return "整体内容";
 }
 
@@ -451,14 +455,6 @@ function scanKeywords(payload) {
   for (const rule of keywordRules) {
     const matches = [...text.matchAll(rule.pattern)].slice(0, 5).map((item) => item[0]);
     if (matches.length) findings.push({ title: rule.title, level: rule.level, evidence: [...new Set(matches)], fix: rule.fix });
-  }
-  if ((payload.files || []).some((file) => file.kind === "audio") && !payload.transcript) {
-    findings.push({
-      title: "音频内容缺少字幕或口播稿",
-      level: "中",
-      evidence: ["已上传音频，但没有可分析的文字转写"],
-      fix: "补充字幕、口播稿或后续接入 ASR 后再做最终判断。",
-    });
   }
   return findings;
 }
