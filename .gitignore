@@ -1,0 +1,7 @@
+.env
+data/
+node_modules/
+*.log
+cloudflared.exe
+*.zip
+tmp-server.*

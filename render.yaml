@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: content-compliance-checker
+    env: node
+    plan: starter
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: AI_PROVIDER
+        value: bailian
+      - key: BAILIAN_MODEL
+        value: qwen-vl-plus-latest
+      - key: BAILIAN_BASE_URL
+        value: https://dashscope.aliyuncs.com/compatible-mode/v1
+      - key: MAX_UPLOAD_MB
+        value: "60"
+      - key: MAX_AI_IMAGES
+        value: "24"
+      - key: ACCESS_CODES
+        sync: false
+      - key: DASHSCOPE_API_KEY
+        sync: false

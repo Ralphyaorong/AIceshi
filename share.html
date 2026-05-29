@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>合规检测报告</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell share-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">共享报告</p>
+          <h1>内容合规检测报告</h1>
+        </div>
+        <div class="topbar-actions">
+          <a class="ghost-link" href="/">发起新检测</a>
+          <button class="ghost-button" id="copyButton" type="button">复制 Markdown</button>
+          <button class="secondary-button" type="button" onclick="window.print()">打印</button>
+        </div>
+      </header>
+
+      <main class="report-panel">
+        <div class="audit-status" id="status">正在加载报告...</div>
+        <pre class="markdown-report shared-markdown" id="report"></pre>
+      </main>
+    </div>
+
+    <script src="/share.js"></script>
+  </body>
+</html>
