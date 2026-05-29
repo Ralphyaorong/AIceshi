@@ -8,8 +8,10 @@ services:
     envVars:
       - key: AI_PROVIDER
         value: bailian
-      - key: BAILIAN_MODEL
-        value: qwen-vl-plus-latest
+      - key: BAILIAN_PRIMARY_MODEL
+        value: qwen3.5-omni-plus-2026-03-15
+      - key: BAILIAN_FALLBACK_MODELS
+        value: qwen3.5-omni-flash,qwen-vl-plus,qwen-vl-plus-latest
       - key: BAILIAN_BASE_URL
         value: https://dashscope.aliyuncs.com/compatible-mode/v1
       - key: MAX_UPLOAD_MB

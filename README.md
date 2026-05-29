@@ -2,12 +2,12 @@
 
 全媒体内容发布前合规审查工作台。
 
-这是一个面向发布前自查的内容风控工具。用户可以上传视频、图片、音频，或粘贴文案、字幕、口播稿和画面说明，系统会结合目标平台与发布场景，提前识别可能导致违规、限流、审核不通过或需要修改的内容表达，并给出修改建议。
+这是一个面向发布前自查的内容风控工具。用户可以上传视频、图片，或粘贴文案、字幕、口播稿和画面说明，系统会结合目标平台与发布场景，提前识别可能导致违规、限流、审核不通过或需要修改的内容表达，并给出修改建议。
 
 ## 当前能力
 
-- 上传视频、图片、音频素材
-- 粘贴标题 / 广告正文、字幕 / 口播稿 / 音频转写、画面说明 / 补充信息
+- 上传视频、图片素材
+- 粘贴标题 / 广告正文、字幕 / 口播稿、画面说明 / 补充信息
 - 选择行业、内容用途、地区和发布 / 投放平台
 - 生成结构化风险结果
 - 保留 Markdown 详细报告
@@ -61,7 +61,8 @@ npm start
 ```bash
 AI_PROVIDER=bailian
 DASHSCOPE_API_KEY=你的百炼Key
-BAILIAN_MODEL=qwen-vl-plus-latest
+BAILIAN_PRIMARY_MODEL=qwen3.5-omni-plus-2026-03-15
+BAILIAN_FALLBACK_MODELS=qwen3.5-omni-flash,qwen-vl-plus,qwen-vl-plus-latest
 BAILIAN_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 ACCESS_CODES=lris,miya,devin,josh
 MAX_UPLOAD_MB=60

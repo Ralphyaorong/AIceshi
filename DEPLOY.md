@@ -15,15 +15,15 @@ OPENAI_MODEL=gpt-4.1-mini
 OPENAI_TRANSCRIBE_MODEL=gpt-4o-transcribe
 AI_PROVIDER=bailian
 BAILIAN_API_KEY=你的阿里百炼 API Key
-BAILIAN_MODEL=qwen-vl-plus-latest
+BAILIAN_PRIMARY_MODEL=qwen3.5-omni-plus-2026-03-15
+BAILIAN_FALLBACK_MODELS=qwen3.5-omni-flash,qwen-vl-plus,qwen-vl-plus-latest
 BAILIAN_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 MAX_UPLOAD_MB=90
-MAX_AUDIO_MB=24
 MAX_AI_IMAGES=24
 DATA_DIR=./data
 ```
 
-如果只使用阿里百炼，可以不填 `OPENAI_API_KEY`。此时图片、视频关键帧、文本报告可用；音频自动转写暂不启用，需要手动粘贴字幕/口播稿，或另接 ASR 服务。
+如果只使用阿里百炼，可以不填 `OPENAI_API_KEY`。此时图片、视频关键帧和文本报告可用；建议随视频补充字幕或口播稿文本，便于系统覆盖画面之外的口播内容。
 
 5. Railway 会自动识别 `package.json`，启动命令为：
 
@@ -69,4 +69,4 @@ https://你的域名/share/r_xxxxxxxxxxxxxxxx
 - 当前版本用本地 JSON 文件保存报告。小规模演示和内部使用可以直接上线。
 - 如果你要长期商用，建议把报告和上传记录迁移到 Supabase/Postgres，避免部署平台重启或无持久磁盘导致历史报告丢失。
 - 上传的视频不会整段送进模型；浏览器会抽取关键帧，后端会分析关键帧、图片和可转写音频。
-- 视频/音频转写文件建议控制在 `MAX_AUDIO_MB` 以内，超大视频建议先压缩或截取广告片段。
+- 建议优先上传单条待审片段而不是整段长视频，必要时先压缩或截取重点画面。

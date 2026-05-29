@@ -26,10 +26,13 @@ const aiBaseUrl =
   aiProvider === "bailian"
     ? process.env.BAILIAN_BASE_URL || "https://dashscope.aliyuncs.com/compatible-mode/v1"
     : process.env.OPENAI_BASE_URL || "https://api.openai.com/v1";
-const aiModel =
+const defaultBailianPrimaryModel = "qwen3.5-omni-plus-2026-03-15";
+const defaultBailianFallbackModels = ["qwen3.5-omni-flash", "qwen-vl-plus", "qwen-vl-plus-latest"];
+const aiModelCandidates =
   aiProvider === "bailian"
-    ? process.env.BAILIAN_MODEL || "qwen-vl-plus-latest"
-    : process.env.OPENAI_MODEL || "gpt-4.1-mini";
+    ? resolveBailianModels()
+    : [process.env.OPENAI_MODEL || "gpt-4.1-mini"];
+const aiModel = aiModelCandidates[0];
 
 const platforms = {
   facebook: "Facebook",
@@ -56,6 +59,28 @@ const sourceLinks = [
   ["YouTube Advertiser-friendly Content Guidelines", "https://support.google.com/youtube/answer/6162278"],
   ["Google Ads Video Ad Requirements", "https://support.google.com/adspolicy/answer/2679940"],
 ];
+
+function resolveBailianModels() {
+  const preferred = [];
+  const pushModel = (modelName) => {
+    const normalized = String(modelName || "").trim();
+    if (normalized && !preferred.includes(normalized)) preferred.push(normalized);
+  };
+
+  pushModel(process.env.BAILIAN_PRIMARY_MODEL || defaultBailianPrimaryModel);
+  parseCsvList(process.env.BAILIAN_FALLBACK_MODELS).forEach(pushModel);
+  defaultBailianFallbackModels.forEach(pushModel);
+  pushModel(process.env.BAILIAN_MODEL);
+
+  return preferred;
+}
+
+function parseCsvList(rawValue) {
+  return String(rawValue || "")
+    .split(/[,\n\r，]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
 
 const keywordRules = [
   {
@@ -113,11 +138,12 @@ const server = http.createServer(async (request, response) => {
     if (request.method === "GET" && url.pathname === "/health") {
       return sendJson(response, 200, {
         ok: true,
-        aiEnabled: Boolean(aiKey),
+        aiConfigured: Boolean(aiKey),
         provider: aiProvider,
         model: aiModel,
+        models: aiModelCandidates,
         accessRequired: accessCodeHashes.size > 0,
-        audioUnderstanding: "需要上传字幕/口播稿；可后续接入 ASR",
+        audioUnderstanding: "建议随视频补充字幕或口播稿文本，当前按视频画面与文本联合审查",
       });
     }
 
@@ -246,11 +272,18 @@ async function buildAuditReport(payload, request) {
   let markdown = "";
   let aiEnabled = false;
   let aiError = "";
+  let usedModel = aiModel;
+  let aiFallbackUsed = false;
+  let attemptedModels = [...aiModelCandidates];
 
   if (aiKey) {
     try {
-      markdown = await callAi(payload, selectedPlatforms, localFindings);
+      const aiResult = await callAi(payload, selectedPlatforms, localFindings);
+      markdown = aiResult.content;
       aiEnabled = true;
+      usedModel = aiResult.model;
+      aiFallbackUsed = aiResult.fallbackUsed;
+      attemptedModels = aiResult.attemptedModels;
     } catch (error) {
       aiError = error.message || "AI 调用失败";
       markdown = buildFallbackMarkdown(payload, selectedPlatforms, localFindings, aiError);
@@ -264,8 +297,10 @@ async function buildAuditReport(payload, request) {
     id,
     generatedAt: new Date().toISOString(),
     provider: aiProvider,
-    model: aiModel,
+    model: usedModel,
+    models: attemptedModels,
     aiEnabled,
+    aiFallbackUsed,
     aiError,
     shareUrl: `${originFromRequest(request)}/share/${id}`,
     markdown: cleanMarkdown(markdown),
@@ -375,9 +410,9 @@ function normalizeRiskLevel(level) {
 function detectIssueLocation(payload, evidence) {
   const joinedEvidence = (evidence || []).join(" ");
   if (joinedEvidence && String(payload.text || "").includes(joinedEvidence)) return "标题 / 广告正文";
-  if (joinedEvidence && String(payload.transcript || "").includes(joinedEvidence)) return "字幕 / 口播稿 / 音频转写";
+  if (joinedEvidence && String(payload.transcript || "").includes(joinedEvidence)) return "字幕 / 口播稿";
   if (joinedEvidence && String(payload.notes || "").includes(joinedEvidence)) return "画面说明 / 补充信息";
-  if ((payload.files || []).some((file) => file.kind === "audio") && !payload.transcript) return "字幕 / 口播稿 / 音频转写";
+  if ((payload.files || []).some((file) => file.kind === "audio") && !payload.transcript) return "字幕 / 口播稿";
   return "整体内容";
 }
 
@@ -443,33 +478,89 @@ async function callAi(payload, selectedPlatforms, localFindings) {
     {
       role: "system",
       content:
-        "你是资深跨平台广告与自媒体内容合规审查员。请用中文输出专业、可执行的 Markdown 报告。不要编造不存在的官方条款编号；可引用公开规则名称和链接。",
+        "你是资深跨平台广告与自媒体内容合规审查员。请用中文输出专业、可执行的 Markdown 报告。不要编造不存在的官方条款编号；可以引用公开规则名称和链接。",
     },
     {
       role: "user",
-      content: [
-        { type: "text", text: buildPrompt(payload, selectedPlatforms, localFindings) },
-        ...images,
-      ],
+      content: [{ type: "text", text: buildPrompt(payload, selectedPlatforms, localFindings) }, ...images],
     },
   ];
 
-  const res = await fetch(`${aiBaseUrl.replace(/\/$/, "")}/chat/completions`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${aiKey}`,
-    },
-    body: JSON.stringify({
-      model: aiModel,
-      messages,
-      temperature: 0.2,
-    }),
-  });
+  const attemptedModels = [];
+  const errors = [];
 
-  const json = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(json.error?.message || `AI 请求失败：${res.status}`);
-  return json.choices?.[0]?.message?.content || "";
+  for (const modelName of aiModelCandidates) {
+    attemptedModels.push(modelName);
+
+    const res = await fetch(`${aiBaseUrl.replace(/\/$/, "")}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${aiKey}`,
+      },
+      body: JSON.stringify({
+        model: modelName,
+        messages,
+        temperature: 0.2,
+      }),
+    });
+
+    const json = await res.json().catch(() => ({}));
+    const responseText = normalizeAiContent(json.choices?.[0]?.message?.content);
+    if (res.ok && responseText) {
+      return {
+        content: responseText,
+        model: modelName,
+        fallbackUsed: attemptedModels.length > 1,
+        attemptedModels,
+      };
+    }
+
+    const errorMessage = formatAiError(json, res.status, modelName);
+    if (shouldTryNextAiModel(errorMessage, res.status) && attemptedModels.length < aiModelCandidates.length) {
+      errors.push(errorMessage);
+      continue;
+    }
+
+    throw new Error(errorMessage);
+  }
+
+  throw new Error(errors.join(" | ") || "AI 请求失败");
+}
+
+function shouldTryNextAiModel(message, status) {
+  const text = String(message || "").toLowerCase();
+  if (status === 429 || status >= 500) return true;
+  return [
+    "allocationquota.freetieronly",
+    "free tier",
+    "free-tier",
+    "quota",
+    "exhaust",
+    "insufficient_quota",
+    "resource exhausted",
+    "rate limit",
+    "temporarily unavailable",
+    "model not found",
+    "does not exist",
+    "do not have access"
+  ].some((needle) => text.includes(needle));
+}
+
+function formatAiError(json, status, modelName) {
+  const message = json.error?.message || json.message || `AI 请求失败（${status}）`;
+  return `[${modelName}] ${message}`;
+}
+
+function normalizeAiContent(content) {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => (typeof part === "string" ? part : part?.text || ""))
+      .join("\n")
+      .trim();
+  }
+  return "";
 }
 
 function buildPrompt(payload, selectedPlatforms, localFindings) {
@@ -758,5 +849,6 @@ function loadEnv() {
 
 server.listen(port, host, () => {
   console.log(`Content compliance checker running on ${host}:${port}`);
-  console.log(`AI: ${aiKey ? "enabled" : "disabled"} provider=${aiProvider} model=${aiModel}`);
+  console.log(`AI: ${aiKey ? "enabled" : "disabled"} provider=${aiProvider} models=${aiModelCandidates.join(",")}`);
 });
+

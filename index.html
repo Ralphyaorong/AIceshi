@@ -459,11 +459,6 @@
         background: #eef2ff;
       }
 
-      .asset-card audio {
-        width: 100%;
-        padding: 10px;
-      }
-
       .asset-card-body {
         padding: 12px 14px 14px;
       }
@@ -893,14 +888,6 @@
                   <label class="file-trigger" for="imageInput">选择图片</label>
                   <input class="file-input" id="imageInput" type="file" accept="image/*" multiple />
                 </div>
-                <div class="upload-row">
-                  <div>
-                    <strong>上传音频</strong>
-                    <p>适合口播、播客切片和配音，建议同时补充字幕或转写。</p>
-                  </div>
-                  <label class="file-trigger" for="audioInput">选择音频</label>
-                  <input class="file-input" id="audioInput" type="file" accept="audio/*" multiple />
-                </div>
               </div>
             </div>
             <div class="panel-section">
@@ -929,8 +916,8 @@
                   <textarea id="text" placeholder="粘贴标题、广告正文、图文说明、广告卖点或落地页核心表达。"></textarea>
                 </div>
                 <div class="field-group">
-                  <label class="field-label" for="transcript">字幕 / 口播稿 / 音频转写</label>
-                  <textarea id="transcript" placeholder="粘贴视频字幕、主播口播稿或音频转写内容。"></textarea>
+                  <label class="field-label" for="transcript">字幕 / 口播稿</label>
+                  <textarea id="transcript" placeholder="粘贴视频字幕、主播口播稿或完整转写内容。"></textarea>
                 </div>
                 <div class="field-group">
                   <label class="field-label" for="notes">画面说明 / 补充信息</label>
@@ -1183,7 +1170,6 @@
       const elements = {
         imageInput: document.getElementById("imageInput"),
         videoInput: document.getElementById("videoInput"),
-        audioInput: document.getElementById("audioInput"),
         text: document.getElementById("text"),
         transcript: document.getElementById("transcript"),
         notes: document.getElementById("notes"),
@@ -1216,8 +1202,6 @@
       function bindEvents() {
         elements.imageInput.addEventListener("change", syncFilesFromInputs);
         elements.videoInput.addEventListener("change", syncFilesFromInputs);
-        elements.audioInput.addEventListener("change", syncFilesFromInputs);
-
         [elements.text, elements.transcript, elements.notes, elements.regionCustom].forEach((node) => {
           node.addEventListener("input", () => {
             renderPreview();
@@ -1276,7 +1260,6 @@
         state.files = [
           ...Array.from(elements.imageInput.files || []),
           ...Array.from(elements.videoInput.files || []),
-          ...Array.from(elements.audioInput.files || []),
         ];
 
         renderFiles("正在读取素材...");
@@ -1316,7 +1299,12 @@
             elements.shareLink.textContent = data.shareUrl;
           }
 
-          setStatus(data.aiEnabled ? "ok" : "warn", data.aiEnabled ? "审查完成。以下为建议的发布前风险结果与修改建议。" : "AI 未启用，当前结果基于本地规则预审与结构化整理。");
+          const aiStatusMessage = data.aiEnabled
+            ? data.aiFallbackUsed
+              ? "主模型免费额度已用尽，已自动切换到备用模型完成审查。"
+              : "AI 审查已完成，以下为发布前风险结果与修改建议。"
+            : "所有可用模型均调用失败，当前结果基于本地规则预审与结构化整理。";
+          setStatus(data.aiEnabled ? "ok" : "warn", aiStatusMessage);
           renderResults();
         } catch (error) {
           setStatus("err", error.message || "生成报告失败");
@@ -1357,7 +1345,7 @@
         }
 
         if (!state.files.length) {
-          elements.fileList.innerHTML = `<div class="helper-card"><strong>暂未上传素材</strong><p>可分别上传视频、图片和音频，也可仅粘贴文案、字幕和画面说明开始审查。</p></div>`;
+          elements.fileList.innerHTML = `<div class="helper-card"><strong>暂未上传素材</strong><p>可上传视频、图片，也可仅粘贴文案、字幕和画面说明开始审查。</p></div>`;
           return;
         }
 
@@ -1383,7 +1371,7 @@
         const notesValue = elements.notes.value.trim();
 
         if (textValue) cards.push(renderPreviewTextCard("标题 / 广告正文", textValue, `${textValue.length} 字`));
-        if (transcriptValue) cards.push(renderPreviewTextCard("字幕 / 口播稿 / 音频转写", transcriptValue, `${transcriptValue.length} 字`));
+        if (transcriptValue) cards.push(renderPreviewTextCard("字幕 / 口播稿", transcriptValue, `${transcriptValue.length} 字`));
         if (notesValue) cards.push(renderPreviewTextCard("画面说明 / 补充信息", notesValue, `${notesValue.length} 字`));
 
         if (state.files.length) {
@@ -1461,19 +1449,6 @@
             </article>
           `;
         }
-
-        if (meta.kind === "audio") {
-          return `
-            <article class="asset-card">
-              <audio src="${objectUrl}" controls></audio>
-              <div class="asset-card-body">
-                <strong>${escapeHtml(file.name)}</strong>
-                <div class="file-meta">${formatBytes(file.size)} · 音频</div>
-              </div>
-            </article>
-          `;
-        }
-
         return `
           <article class="asset-card">
             <div class="asset-card-body">
@@ -1705,7 +1680,7 @@
         const findings = [];
         const textAreas = [
           { key: "text", label: "标题 / 广告正文", value: payload.text || "" },
-          { key: "transcript", label: "字幕 / 口播稿 / 音频转写", value: payload.transcript || "" },
+          { key: "transcript", label: "字幕 / 口播稿", value: payload.transcript || "" },
           { key: "notes", label: "画面说明 / 补充信息", value: payload.notes || "" },
         ];
 
@@ -1734,19 +1709,6 @@
               suggested: buildSuggestedRewrite(rule, payload, evidence),
             });
           }
-        }
-
-        if ((payload.files || []).some((file) => file.kind === "audio") && !payload.transcript) {
-          findings.push({
-            title: "音频缺少可审查转写",
-            level: "Medium",
-            location: "字幕 / 口播稿 / 音频转写",
-            evidence: ["已上传音频，但未提供字幕或口播稿"],
-            suggestion: "补充音频转写、字幕或主播口播稿后再进行正式审查。",
-            reason: "口播内容缺失时，平台审核风险无法完整覆盖，容易漏掉承诺性表达或敏感引导。",
-            original: "已上传音频，但未提供字幕或口播稿",
-            suggested: "补充完整的音频转写后再进行发布前合规自查。",
-          });
         }
 
         if ((payload.notes || "").includes("二维码")) {
@@ -1879,7 +1841,6 @@
       function clearWorkspace() {
         elements.imageInput.value = "";
         elements.videoInput.value = "";
-        elements.audioInput.value = "";
         elements.text.value = "";
         elements.transcript.value = "";
         elements.notes.value = "";
@@ -1955,8 +1916,8 @@
 
       function fileMeta(file) {
         const prefix = file.type.split("/")[0] || "file";
-        const kind = prefix === "image" || prefix === "video" || prefix === "audio" ? prefix : "file";
-        const kindLabel = kind === "image" ? "图片" : kind === "video" ? "视频" : kind === "audio" ? "音频" : "文件";
+        const kind = prefix === "image" || prefix === "video" ? prefix : "file";
+        const kindLabel = kind === "image" ? "图片" : kind === "video" ? "视频" : "文件";
         return { name: file.name, type: file.type, size: file.size, kind, kindLabel };
       }
 
@@ -2023,3 +1984,4 @@
     </script>
   </body>
 </html>
+
