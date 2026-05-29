@@ -70,7 +70,15 @@ const server = http.createServer(async (request, response) => {
 
 function proxyToUpstream(request, response, pathname) {
   const target = new URL(request.url, `http://${upstreamHost}:${upstreamPort}`);
-  const headers = { ...request.headers, host: `${upstreamHost}:${upstreamPort}`, "x-access-code": internalAccessCode };
+  const forwardedHost = request.headers["x-forwarded-host"] || request.headers.host || "";
+  const forwardedProto = request.headers["x-forwarded-proto"] || "http";
+  const headers = {
+    ...request.headers,
+    host: `${upstreamHost}:${upstreamPort}`,
+    "x-forwarded-host": Array.isArray(forwardedHost) ? forwardedHost[0] : forwardedHost,
+    "x-forwarded-proto": Array.isArray(forwardedProto) ? forwardedProto[0] : forwardedProto,
+    "x-access-code": internalAccessCode,
+  };
   delete headers.connection;
   delete headers["accept-encoding"];
 
