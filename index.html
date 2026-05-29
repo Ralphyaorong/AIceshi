@@ -979,7 +979,7 @@
                 <div class="upload-row">
                   <div>
                     <strong>上传文档</strong>
-                    <p>支持 DOC、DOCX、PPT、PPTX、XLS、XLSX、CSV、TXT 等资料，用于补充审查背景。</p>
+                    <p>优先支持 DOCX、PPTX、XLSX、CSV、TXT、MD 文本提取；旧版 DOC/PPT/XLS 建议先另存为新版格式后再上传。</p>
                   </div>
                   <label class="file-trigger" for="docInput">选择文件</label>
                   <input class="file-input" id="docInput" type="file" accept=".doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.txt,.md,.pdf" multiple />
@@ -1164,6 +1164,7 @@
       </section>
     </main>
 
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
     <script>
       const PLATFORM_OPTIONS = [
         { id: "facebook", label: "Facebook" },
@@ -1248,6 +1249,7 @@
       const state = {
         files: [],
         assets: [],
+        documentTexts: [],
         markdown: "",
         result: null,
         activeTab: "overview",
@@ -1353,9 +1355,12 @@
 
         renderFiles("正在读取素材...");
         renderComparison();
-        state.assets = await buildAssets(state.files);
+        const [assets, documentTexts] = await Promise.all([buildAssets(state.files), buildDocumentTexts(state.files)]);
+        state.assets = assets;
+        state.documentTexts = documentTexts;
         renderFiles();
         renderComparison();
+        updateDocumentReadStatus();
         if (!state.result) renderResults();
       }
 
@@ -1415,6 +1420,8 @@
           platforms: [...state.platforms],
           files: state.files.map(fileMeta),
           assets: state.assets,
+          documents: state.documentTexts,
+          documentText: buildDocumentContext(),
         };
       }
 
@@ -1444,7 +1451,7 @@
               <div class="file-item">
                 <div>
                   <strong>${escapeHtml(file.name)}</strong>
-                  <div class="file-meta">${escapeHtml(file.type || "未知类型")} · ${formatBytes(file.size)}</div>
+                  <div class="file-meta">${escapeHtml(file.type || "未知类型")} · ${formatBytes(file.size)}${renderDocumentSummary(file)}</div>
                 </div>
                 <span class="mini-pill">${escapeHtml(fileMeta(file).kindLabel)}</span>
               </div>
@@ -1785,7 +1792,10 @@
 
       function scanClientRules(payload) {
         const findings = [];
-        const textAreas = [{ key: "text", label: "内容文本", value: payload.text || "" }];
+        const textAreas = [
+          { key: "text", label: "内容文本", value: payload.text || "" },
+          { key: "documentText", label: "上传文档", value: payload.documentText || "" },
+        ];
 
         for (const rule of CLIENT_RULES) {
           const matches = [];
@@ -1814,11 +1824,11 @@
           }
         }
 
-        if ((payload.text || "").includes("二维码")) {
+        if (`${payload.text || ""}\n${payload.documentText || ""}`.includes("二维码")) {
           findings.push({
             title: "画面可能包含站外引导元素",
             level: "Medium",
-            location: "内容文本",
+            location: payload.documentText && payload.documentText.includes("二维码") ? "上传文档" : "内容文本",
             evidence: ["文本提到二维码"],
             suggestion: "确认二维码用途，避免将用户直接导向站外私下交易或未披露的转化路径。",
             reason: "二维码、私信引导和站外下单路径会提高限流和审核失败风险。",
@@ -1841,7 +1851,7 @@
       }
 
       function buildSuggestedRewrite(rule, payload, evidence) {
-        const source = payload.text || payload.transcript || payload.notes || evidence.join("；");
+        const source = payload.text || payload.documentText || payload.transcript || payload.notes || evidence.join("；");
         if (rule.id === "absolute-claim") {
           return source.replace(/100%|保证通过|绝对不违规|零风险|稳赚|保本|全国第一|唯一|永不|当天见效|7天见效/g, "可能 / 建议以平台规则和实际审核结果为准");
         }
@@ -1884,7 +1894,7 @@
             level = "Medium";
           }
 
-          if (!payload.text && findings.length === 0) {
+          if (!payload.text && !payload.documentText && findings.length === 0) {
             level = "Low";
           }
 
@@ -1947,6 +1957,7 @@
         elements.regionCustom.value = "";
         state.files = [];
         state.assets = [];
+        state.documentTexts = [];
         state.markdown = "";
         state.result = null;
         state.activeTab = "overview";
@@ -1971,6 +1982,162 @@
           }
         }
         return assets.slice(0, 24);
+      }
+
+      async function buildDocumentTexts(files) {
+        const docs = files.filter((file) => fileMeta(file).kind === "document");
+        const results = [];
+        for (const file of docs) {
+          results.push(await extractDocumentEntry(file));
+        }
+        return results;
+      }
+
+      async function extractDocumentEntry(file) {
+        const extension = (file.name.split(".").pop() || "").toLowerCase();
+        try {
+          const text = normalizeExtractedText(await extractDocumentText(file, extension));
+          if (!text) {
+            throw new Error("未提取到可读文本，请确认文档内包含可复制文字。");
+          }
+          const clipped = text.slice(0, 18000);
+          return {
+            name: file.name,
+            type: file.type || "",
+            size: file.size || 0,
+            extension,
+            extracted: true,
+            text: clipped,
+            summary: ` · 已提取 ${clipped.length} 字`,
+          };
+        } catch (error) {
+          return {
+            name: file.name,
+            type: file.type || "",
+            size: file.size || 0,
+            extension,
+            extracted: false,
+            text: "",
+            error: error.message || "解析失败",
+            summary: ` · ${error.message || "解析失败"}`,
+          };
+        }
+      }
+
+      async function extractDocumentText(file, extension) {
+        if (["txt", "md", "csv"].includes(extension)) {
+          return await file.text();
+        }
+        if (extension === "docx") {
+          return await extractDocxText(file);
+        }
+        if (extension === "pptx") {
+          return await extractPptxText(file);
+        }
+        if (extension === "xlsx") {
+          return await extractXlsxText(file);
+        }
+        if (["doc", "ppt", "xls"].includes(extension)) {
+          throw new Error("旧版 Office 格式暂不支持，请另存为 docx / pptx / xlsx 后再上传。");
+        }
+        if (extension === "pdf") {
+          throw new Error("PDF 文本提取暂未开启，请先转换为 docx / txt，或直接粘贴文案。");
+        }
+        throw new Error("当前文件格式暂不支持自动提取，请直接粘贴文案。");
+      }
+
+      async function extractDocxText(file) {
+        const zip = await loadZip(file);
+        const targets = Object.keys(zip.files).filter((name) =>
+          /^word\/(document|header\d+|footer\d+|footnotes|endnotes)\.xml$/i.test(name),
+        );
+        const chunks = [];
+        for (const target of targets) {
+          chunks.push(await zip.files[target].async("string"));
+        }
+        return chunks.map(xmlToReadableText).join("\n\n");
+      }
+
+      async function extractPptxText(file) {
+        const zip = await loadZip(file);
+        const targets = Object.keys(zip.files)
+          .filter((name) => /^ppt\/slides\/slide\d+\.xml$/i.test(name))
+          .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+        const chunks = [];
+        for (const target of targets) {
+          chunks.push(await zip.files[target].async("string"));
+        }
+        return chunks.map(xmlToReadableText).join("\n\n");
+      }
+
+      async function extractXlsxText(file) {
+        const zip = await loadZip(file);
+        const sharedStrings = zip.files["xl/sharedStrings.xml"] ? xmlToReadableText(await zip.files["xl/sharedStrings.xml"].async("string")) : "";
+        const sheetNames = Object.keys(zip.files)
+          .filter((name) => /^xl\/worksheets\/sheet\d+\.xml$/i.test(name))
+          .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+        const sheetTexts = [];
+        for (const target of sheetNames) {
+          sheetTexts.push(xmlToReadableText(await zip.files[target].async("string")));
+        }
+        return [sharedStrings, ...sheetTexts].filter(Boolean).join("\n\n");
+      }
+
+      async function loadZip(file) {
+        if (!window.JSZip) {
+          throw new Error("文档解析组件加载失败，请刷新页面后重试。");
+        }
+        return window.JSZip.loadAsync(await file.arrayBuffer());
+      }
+
+      function xmlToReadableText(xml) {
+        return decodeHtmlEntities(
+          String(xml || "")
+            .replace(/<\/w:p>|<\/a:p>|<\/row>|<\/si>/gi, "\n")
+            .replace(/<w:tab\/>|<tab\/>/gi, "\t")
+            .replace(/<[^>]+>/g, " ")
+            .replace(/\s+\n/g, "\n")
+            .replace(/\n{3,}/g, "\n\n")
+            .replace(/[ \t]{2,}/g, " ")
+            .trim(),
+        );
+      }
+
+      function normalizeExtractedText(text) {
+        return String(text || "")
+          .replace(/\u0000/g, "")
+          .replace(/\r\n/g, "\n")
+          .replace(/\n{3,}/g, "\n\n")
+          .trim();
+      }
+
+      function buildDocumentContext() {
+        return state.documentTexts
+          .filter((item) => item.extracted && item.text)
+          .map((item) => `【${item.name}】\n${item.text}`)
+          .join("\n\n");
+      }
+
+      function renderDocumentSummary(file) {
+        const meta = fileMeta(file);
+        if (meta.kind !== "document") return "";
+        const entry = state.documentTexts.find((item) => item.name === file.name && item.size === file.size);
+        return entry?.summary ? escapeHtml(entry.summary) : " · 待提取内容";
+      }
+
+      function updateDocumentReadStatus() {
+        if (!state.documentTexts.length) return;
+        const extracted = state.documentTexts.filter((item) => item.extracted).length;
+        const failed = state.documentTexts.filter((item) => !item.extracted);
+        if (extracted && !failed.length) {
+          setStatus("ok", `已读取 ${extracted} 个文档内容，文档文本会自动参与本次审查。`);
+          return;
+        }
+        if (extracted && failed.length) {
+          setStatus("warn", `已读取 ${extracted} 个文档；另有 ${failed.length} 个文档未自动提取，请按提示转换格式或直接粘贴文案。`);
+          return;
+        }
+        setStatus("warn", "当前上传文档未提取到可读文本，请将文件另存为 docx / pptx / xlsx / txt，或直接粘贴文案。");
       }
 
       async function imageToDataUrl(file) {
@@ -2080,6 +2247,12 @@
 
       function escapeHtml(value) {
         return String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[char]));
+      }
+
+      function decodeHtmlEntities(value) {
+        const textarea = document.createElement("textarea");
+        textarea.innerHTML = value;
+        return textarea.value;
       }
     </script>
   </body>

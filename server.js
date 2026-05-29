@@ -267,6 +267,7 @@ const server = http.createServer(async (request, response) => {
 });
 
 async function buildAuditReport(payload, request) {
+  payload = normalizePayload(payload);
   const selectedPlatforms = Array.isArray(payload.platforms) && payload.platforms.length ? payload.platforms : Object.keys(platforms);
   const localFindings = scanKeywords(payload);
   let markdown = "";
@@ -306,6 +307,17 @@ async function buildAuditReport(payload, request) {
     markdown: cleanMarkdown(markdown),
     structured: buildStructuredResult(payload, selectedPlatforms, localFindings),
   };
+}
+
+function normalizePayload(payload) {
+  const documents = Array.isArray(payload.documents) ? payload.documents : [];
+  const documentText =
+    payload.documentText ||
+    documents
+      .filter((item) => item && item.extracted && item.text)
+      .map((item) => `【${item.name || "上传文档"}】\n${item.text}`)
+      .join("\n\n");
+  return { ...payload, documents, documentText };
 }
 
 function buildStructuredResult(payload, selectedPlatforms, localFindings) {
@@ -392,7 +404,7 @@ function buildStructuredIssues(selectedPlatforms, localFindings, payload) {
 }
 
 function buildStructuredRewrites(localFindings, payload) {
-  const source = payload.text || payload.transcript || payload.notes || "";
+  const source = payload.text || payload.documentText || payload.transcript || payload.notes || "";
   return localFindings.slice(0, 4).map((item) => ({
     level: normalizeRiskLevel(item.level),
     title: item.title,
@@ -415,6 +427,7 @@ function normalizeRiskLevel(level) {
 function detectIssueLocation(payload, evidence) {
   const joinedEvidence = (evidence || []).join(" ");
   if (joinedEvidence && String(payload.text || "").includes(joinedEvidence)) return "标题 / 广告正文";
+  if (joinedEvidence && String(payload.documentText || "").includes(joinedEvidence)) return "上传文档";
   if (joinedEvidence && String(payload.transcript || "").includes(joinedEvidence)) return "字幕 / 口播稿";
   if (joinedEvidence && String(payload.notes || "").includes(joinedEvidence)) return "画面说明 / 补充信息";
   return "整体内容";
@@ -450,7 +463,7 @@ function rewriteSuggestion(item, payload) {
 }
 
 function scanKeywords(payload) {
-  const text = [payload.text, payload.transcript, payload.notes, JSON.stringify(payload.files || [])].filter(Boolean).join("\n");
+  const text = [payload.text, payload.documentText, payload.transcript, payload.notes, JSON.stringify(payload.files || [])].filter(Boolean).join("\n");
   const findings = [];
   for (const rule of keywordRules) {
     const matches = [...text.matchAll(rule.pattern)].slice(0, 5).map((item) => item[0]);
@@ -628,6 +641,9 @@ function buildPrompt(payload, selectedPlatforms, localFindings) {
 
 正文/广告文案：
 ${payload.text || "未填写"}
+
+提取到的上传文档文本：
+${payload.documentText || "未提取到文档文本"}
 
 字幕/口播稿/音频转写：
 ${payload.transcript || "未填写"}
