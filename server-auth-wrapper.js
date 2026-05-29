@@ -70,7 +70,7 @@ const server = http.createServer(async (request, response) => {
 
 function proxyToUpstream(request, response, pathname) {
   const target = new URL(request.url, `http://${upstreamHost}:${upstreamPort}`);
-  const forwardedHost = request.headers["x-forwarded-host"] || request.headers.host || "";
+  const forwardedHost = request.headers.host || request.headers["x-forwarded-host"] || "";
   const forwardedProto = request.headers["x-forwarded-proto"] || "http";
   const headers = {
     ...request.headers,
