@@ -1854,12 +1854,25 @@
 
       function parseMarkdownIssues(markdown, payload) {
         const results = [];
-        const blockPattern = /###\s*(1\.\d+)\s*[【\[]?\s*([^\]】\n]+?)\s*[】\]]\s*([^\n]+)\n([\s\S]*?)(?=\n###\s*1\.\d+|\n##\s*2\.|\n##\s*3\.|\n##\s*4\.|\n##\s*5\.|\n##\s*6\.|\n##\s*7\.|$)/g;
-        let match;
-        while ((match = blockPattern.exec(markdown))) {
-          const [, id, rawLevel, rawTitle, body] = match;
-          const level = normalizeMarkdownRiskLevel(rawLevel);
-          const title = cleanMdText(rawTitle);
+        const blocks = String(markdown || "")
+          .split(/(?=\n?###\s*1\.\d+)/)
+          .map((block) => block.trim())
+          .filter((block) => /^###\s*1\.\d+/.test(block));
+
+        for (const block of blocks) {
+          const lines = block.split("\n");
+          const header = lines.shift() || "";
+          const body = lines.join("\n");
+          const idMatch = header.match(/###\s*(1\.\d+)/);
+          if (!idMatch) continue;
+          const id = idMatch[1];
+          const level = normalizeMarkdownRiskLevel(header);
+          const title = cleanMdText(
+            header
+              .replace(/^###\s*1\.\d+\s*/, "")
+              .replace(/[【\[].*?[】\]]\s*/, "")
+              .trim(),
+          );
           const issueText = extractNumberedField(body, "违规点");
           const evidenceText = extractNumberedField(body, "命中证据");
           const riskReason = extractNumberedField(body, "为什么有风险");
@@ -1888,11 +1901,18 @@
 
       function parseMarkdownPlatformRisks(markdown, payload, issues) {
         const sections = [];
-        const sectionPattern = /###\s*2\.\d+\s+([^\n]+)\n([\s\S]*?)(?=\n###\s*2\.\d+|\n##\s*3\.|\n##\s*4\.|\n##\s*5\.|\n##\s*6\.|\n##\s*7\.|$)/g;
-        let match;
-        while ((match = sectionPattern.exec(markdown))) {
-          const [, title, body] = match;
-          const label = cleanMdText(title);
+        const blocks = String(markdown || "")
+          .split(/(?=\n?###\s*2\.\d+)/)
+          .map((block) => block.trim())
+          .filter((block) => /^###\s*2\.\d+/.test(block));
+
+        for (const block of blocks) {
+          const lines = block.split("\n");
+          const header = lines.shift() || "";
+          const body = lines.join("\n");
+          const titleMatch = header.match(/^###\s*2\.\d+\s+(.+)$/);
+          if (!titleMatch) continue;
+          const label = cleanMdText(titleMatch[1]);
           const level = normalizeMarkdownRiskLevel(extractNumberedField(body, "平台风险等级"));
           const reason = extractNumberedField(body, "主要拒审/限流原因") || extractNumberedField(body, "发布前必须修改");
           sections.push({ label, level: level || "Medium", reason: cleanMdText(reason) || `请根据 ${label} 的平台规则做发布前复核。` });
