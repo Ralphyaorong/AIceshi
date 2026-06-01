@@ -1111,28 +1111,6 @@
                 </div>
               </div>
 
-              <!-- IssueCard -->
-              <div class="metric-card">
-                <div class="panel-head" style="margin-bottom: 10px">
-                  <div>
-                    <h3>主要风险点</h3>
-                    <p class="desc">每条风险分别列出问题位置、涉及平台、风险原因和建议修改。</p>
-                  </div>
-                </div>
-                <div class="issue-list" id="issueList"></div>
-              </div>
-
-              <!-- SuggestedRewrite -->
-              <div class="metric-card">
-                <div class="panel-head" style="margin-bottom: 10px">
-                  <div>
-                    <h3>建议改写</h3>
-                    <p class="desc">展示原始表达与建议表达，便于直接修改文案或补充说明。</p>
-                  </div>
-                </div>
-                <div class="rewrite-list" id="rewriteList"></div>
-              </div>
-
               <!-- ExportActions -->
               <div class="metric-card">
                 <div class="panel-head" style="margin-bottom: 10px">
@@ -1273,8 +1251,6 @@
         statusBanner: document.getElementById("statusBanner"),
         riskSummaryCard: document.getElementById("riskSummaryCard"),
         platformRiskList: document.getElementById("platformRiskList"),
-        issueList: document.getElementById("issueList"),
-        rewriteList: document.getElementById("rewriteList"),
         tabList: document.getElementById("tabList"),
         tabPanel: document.getElementById("tabPanel"),
         shareCard: document.getElementById("shareCard"),
@@ -1573,8 +1549,6 @@
 
         renderRiskSummary(result);
         renderPlatformRisks(result);
-        renderIssues(result);
-        renderRewrites(result);
         renderComparison(result);
         renderTabs(result);
       }
@@ -1617,8 +1591,8 @@
           : `<div class="helper-card"><strong>未选择平台</strong><p>至少保留一个平台，系统才会输出平台间风险差异。</p></div>`;
       }
 
-      function renderIssues(result) {
-        elements.issueList.innerHTML = result.issues.length
+      function buildIssuesHtml(result) {
+        return result.issues.length
           ? result.issues
               .map(
                 (issue) => `
@@ -1629,23 +1603,23 @@
                     </div>
                     <div class="issue-meta">
                       <div class="meta-row">
-                        <span>问题位置</span>
+                        <span>Location</span>
                         <p>${escapeHtml(issue.location)}</p>
                       </div>
                       <div class="meta-row">
-                        <span>涉及平台</span>
+                        <span>Platforms</span>
                         <div class="platform-chip-list">${issue.platforms.map((platform) => `<span class="mini-pill">${escapeHtml(platform)}</span>`).join("")}</div>
                       </div>
                       <div class="meta-row">
-                        <span>风险原因</span>
+                        <span>Reason</span>
                         <p>${escapeHtml(issue.reason)}</p>
                       </div>
                       <div class="meta-row">
-                        <span>命中证据</span>
-                        <p>${escapeHtml(issue.evidence.join("；"))}</p>
+                        <span>Evidence</span>
+                        <p>${escapeHtml(issue.evidence.join("; "))}</p>
                       </div>
                       <div class="meta-row">
-                        <span>建议修改</span>
+                        <span>Suggested fix</span>
                         <p>${escapeHtml(issue.suggestion)}</p>
                       </div>
                     </div>
@@ -1653,26 +1627,26 @@
                 `,
               )
               .join("")
-          : `<div class="helper-card"><strong>暂无主要风险点</strong><p>当前输入没有命中明显的高频风险规则。建议继续人工核对素材来源、品牌授权、数据依据和落地页一致性。</p></div>`;
+          : `<div class="helper-card"><strong>No issue items</strong><p>No issue details are available in this report.</p></div>`;
       }
 
-      function renderRewrites(result) {
-        elements.rewriteList.innerHTML = result.rewrites.length
+      function buildRewritesHtml(result) {
+        return result.rewrites.length
           ? result.rewrites
               .map(
                 (item, index) => `
                   <article class="rewrite-card">
                     <div class="rewrite-head">
-                      <div class="rewrite-title">改写建议 ${index + 1}</div>
+                      <div class="rewrite-title">Rewrite ${index + 1}</div>
                       <span class="risk-pill ${riskClass(item.level)}">${escapeHtml(item.level)}</span>
                     </div>
                     <div class="rewrite-meta">
                       <div class="rewrite-box">
-                        <strong>原始表达</strong>
+                        <strong>Original</strong>
                         <p>${escapeHtml(item.original)}</p>
                       </div>
                       <div class="rewrite-box">
-                        <strong>建议表达</strong>
+                        <strong>Suggested</strong>
                         <p>${escapeHtml(item.suggested)}</p>
                       </div>
                     </div>
@@ -1680,7 +1654,7 @@
                 `,
               )
               .join("")
-          : `<div class="helper-card"><strong>暂无改写建议</strong><p>生成报告后，如果发现高风险表达，这里会给出更稳妥的替代说法。</p></div>`;
+          : `<div class="helper-card"><strong>No rewrite suggestions</strong><p>Add more complete text or subtitle context to generate rewrite guidance.</p></div>`;
       }
 
       function renderTabs(result) {
@@ -1707,9 +1681,9 @@
           return `
             <div class="helper-card">
               <strong>Overview</strong>
-              <p>建议：${escapeHtml(result.recommendation)}</p>
-              <p>评分：${result.score} / 100</p>
-              <p>重点：${escapeHtml(result.topRisks.join("；") || "暂无明显高频风险命中。")}</p>
+              <p>Recommendation: ${escapeHtml(result.recommendation)}</p>
+              <p>Score: ${result.score} / 100</p>
+              <p>Top risks: ${escapeHtml(result.topRisks.join("; ")) || "No obvious high-risk signals detected."}</p>
             </div>
           `;
         }
@@ -1736,13 +1710,13 @@
 
         if (state.activeTab === "issues") {
           return result.issues.length
-            ? `<div class="issue-list">${elements.issueList.innerHTML}</div>`
+            ? `<div class="issue-list">${buildIssuesHtml(result)}</div>`
             : `<div class="helper-card"><strong>暂无风险清单</strong><p>当前没有可展示的逐条问题。</p></div>`;
         }
 
         if (state.activeTab === "rewrites") {
           return result.rewrites.length
-            ? `<div class="rewrite-list">${elements.rewriteList.innerHTML}</div>`
+            ? `<div class="rewrite-list">${buildRewritesHtml(result)}</div>`
             : `<div class="helper-card"><strong>暂无建议改写</strong><p>如需更细的改写，可先补充更完整的标题、字幕和画面描述。</p></div>`;
         }
 
@@ -1952,7 +1926,8 @@
 
       function extractNumberedField(body, label) {
         const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        const match = body.match(new RegExp(`(?:^|\\n)\\s*\\d+\\.\\s*\\*\\*${escaped}\\*\\*：?\\s*([\\s\\S]*?)(?=\\n\\s*\\d+\\.\\s*\\*\\*|$)`));
+        const pattern = String.raw`(?:^|\n)\s*\d+\.\s*\*\*${escaped}\*\*：?\s*([\s\S]*?)(?=\n\s*\d+\.\s*\*\*|\n\s*##+\s|\n\s*---|$)`;
+        const match = body.match(new RegExp(pattern));
         return match ? cleanMdText(match[1]) : "";
       }
 
