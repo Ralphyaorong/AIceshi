@@ -1384,7 +1384,7 @@
           if (!response.ok) throw new Error(data.error || "生成报告失败");
 
           state.markdown = data.markdown || "";
-          state.result = data.structured || buildClientResult(payload, state.markdown);
+          state.result = mergeStructuredResult(data.structured, parseMarkdownReport(state.markdown, payload), payload, state.markdown);
           state.activeTab = "overview";
 
           if (data.shareUrl) {
@@ -1750,6 +1750,34 @@
       }
 
       function buildClientResult(payload, markdown = "") {
+        const parsed = parseMarkdownReport(markdown, payload);
+        const local = buildClientResultFromRules(payload, markdown);
+        return mergeStructuredResult(local, parsed, payload, markdown);
+      }
+
+      function mergeStructuredResult(primary, secondary, payload, markdown = "") {
+        const local = primary && typeof primary === "object" ? primary : buildClientResultFromRules(payload, markdown);
+        const parsed = secondary && typeof secondary === "object" ? secondary : parseMarkdownReport(markdown, payload);
+        const useParsedIssues = (parsed.issues || []).length >= (local.issues || []).length && (parsed.issues || []).length > 0;
+        const merged = {
+          score: useParsedIssues ? parsed.score : local.score,
+          recommendation: useParsedIssues ? parsed.recommendation || local.recommendation : local.recommendation,
+          topRisks: useParsedIssues && parsed.topRisks?.length ? parsed.topRisks : local.topRisks || [],
+          platformRisks: useParsedIssues && parsed.platformRisks?.length ? parsed.platformRisks : local.platformRisks || [],
+          issues: useParsedIssues ? parsed.issues : local.issues || [],
+          rewrites: useParsedIssues && parsed.rewrites?.length ? parsed.rewrites : local.rewrites || [],
+          markdown,
+        };
+        if (!merged.platformRisks.length) {
+          merged.platformRisks = buildPlatformRisks(payload.platforms.length ? payload.platforms : PLATFORM_OPTIONS.map((item) => item.id), merged.issues || [], payload);
+        }
+        if (!merged.topRisks.length) {
+          merged.topRisks = (merged.issues || []).slice(0, 3).map((item) => item.title);
+        }
+        return merged;
+      }
+
+      function buildClientResultFromRules(payload, markdown = "") {
         const findings = scanClientRules(payload);
         const score = calculateClientScore(findings);
         const recommendation = getRecommendation(score);
@@ -1788,6 +1816,193 @@
           rewrites,
           markdown,
         };
+      }
+
+      function parseMarkdownReport(markdown, payload) {
+        const text = String(markdown || "").trim();
+        if (!text) return emptyStructuredResult();
+
+        const issues = parseMarkdownIssues(text, payload);
+        const platformRisks = parseMarkdownPlatformRisks(text, payload, issues);
+        const recommendation = parseRecommendation(text) || recommendationFromIssues(issues);
+        const topRisks = parseTopRisks(text, issues);
+        const rewrites = issues.map((issue) => ({
+          level: issue.level,
+          title: issue.title,
+          location: issue.location,
+          reason: issue.reason,
+          evidence: issue.evidence,
+          platforms: issue.platforms,
+          original: issue.original,
+          suggested: issue.suggested || issue.suggestion,
+        }));
+
+        return {
+          score: calculateIssueScore(issues),
+          recommendation,
+          topRisks,
+          platformRisks,
+          issues,
+          rewrites,
+          markdown: text,
+        };
+      }
+
+      function emptyStructuredResult() {
+        return { score: 92, recommendation: "风险较低，可发布", topRisks: [], platformRisks: [], issues: [], rewrites: [] };
+      }
+
+      function parseMarkdownIssues(markdown, payload) {
+        const results = [];
+        const blockPattern = /###\s*(1\.\d+)\s*[【\[]?\s*([^\]】\n]+?)\s*[】\]]\s*([^\n]+)\n([\s\S]*?)(?=\n###\s*1\.\d+|\n##\s*2\.|\n##\s*3\.|\n##\s*4\.|\n##\s*5\.|\n##\s*6\.|\n##\s*7\.|$)/g;
+        let match;
+        while ((match = blockPattern.exec(markdown))) {
+          const [, id, rawLevel, rawTitle, body] = match;
+          const level = normalizeMarkdownRiskLevel(rawLevel);
+          const title = cleanMdText(rawTitle);
+          const issueText = extractNumberedField(body, "违规点");
+          const evidenceText = extractNumberedField(body, "命中证据");
+          const riskReason = extractNumberedField(body, "为什么有风险");
+          const suggestion = extractNumberedField(body, "修改建议");
+          const suggested = extractNumberedField(body, "建议改写示例");
+          const platformText = extractNumberedField(body, "涉及平台");
+          const location = inferIssueLocation(issueText, evidenceText, payload);
+          const platforms = parsePlatformNames(platformText, payload);
+          const evidence = splitEvidence(evidenceText);
+
+          results.push({
+            id,
+            title,
+            level,
+            location,
+            platforms,
+            reason: riskReason || extractNumberedField(body, "风险等级") || "请结合平台规则和素材语境人工复核。",
+            evidence,
+            suggestion: suggestion || "请根据平台规则和素材语境调整表述。",
+            original: issueText || evidence.join("；") || "当前报告未提供可直接定位的原文片段。",
+            suggested: suggested && !/无法提供|需用户提供|重新检测/.test(suggested) ? suggested : suggestion || "请先补齐完整文案、字幕和落地页信息后再复审。",
+          });
+        }
+        return results;
+      }
+
+      function parseMarkdownPlatformRisks(markdown, payload, issues) {
+        const sections = [];
+        const sectionPattern = /###\s*2\.\d+\s+([^\n]+)\n([\s\S]*?)(?=\n###\s*2\.\d+|\n##\s*3\.|\n##\s*4\.|\n##\s*5\.|\n##\s*6\.|\n##\s*7\.|$)/g;
+        let match;
+        while ((match = sectionPattern.exec(markdown))) {
+          const [, title, body] = match;
+          const label = cleanMdText(title);
+          const level = normalizeMarkdownRiskLevel(extractNumberedField(body, "平台风险等级"));
+          const reason = extractNumberedField(body, "主要拒审/限流原因") || extractNumberedField(body, "发布前必须修改");
+          sections.push({ label, level: level || "Medium", reason: cleanMdText(reason) || `请根据 ${label} 的平台规则做发布前复核。` });
+        }
+        if (sections.length) return sections;
+
+        const selectedPlatforms = payload.platforms.length ? payload.platforms : PLATFORM_OPTIONS.map((item) => item.id);
+        return selectedPlatforms.map((id) => {
+          const label = platformLabel(id);
+          const matchedIssues = (issues || []).filter((issue) => issue.platforms.includes(label));
+          const level = highestIssueLevel(matchedIssues);
+          return {
+            id,
+            label,
+            level,
+            reason: matchedIssues.length ? matchedIssues[0].reason : platformReason(level, payload.contentType),
+          };
+        });
+      }
+
+      function parseRecommendation(markdown) {
+        const match = markdown.match(/是否建议直接发布\/投放\*\*：\s*\**([^*\n]+)\**/);
+        return match ? cleanMdText(match[1]) : "";
+      }
+
+      function parseTopRisks(markdown, issues) {
+        const blockMatch = markdown.match(/最需要先改的\s*3\s*个点\*\*：([\s\S]*?)(?=\n---|\n##\s*1\.|\n##\s*1\b)/);
+        if (blockMatch) {
+          const lines = blockMatch[1]
+            .split("\n")
+            .map((line) => cleanMdText(line.replace(/^[-\s]*\d+\.\s*/, "")))
+            .filter(Boolean);
+          if (lines.length) return lines.slice(0, 3);
+        }
+        return (issues || []).slice(0, 3).map((item) => item.title);
+      }
+
+      function extractNumberedField(body, label) {
+        const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const match = body.match(new RegExp(`(?:^|\\n)\\s*\\d+\\.\\s*\\*\\*${escaped}\\*\\*：?\\s*([\\s\\S]*?)(?=\\n\\s*\\d+\\.\\s*\\*\\*|$)`));
+        return match ? cleanMdText(match[1]) : "";
+      }
+
+      function cleanMdText(value) {
+        return String(value || "")
+          .replace(/\*\*/g, "")
+          .replace(/`/g, "")
+          .replace(/\r/g, "")
+          .trim();
+      }
+
+      function splitEvidence(value) {
+        return cleanMdText(value)
+          .split(/[\n；;、]/)
+          .map((item) => item.replace(/^[-•\s]+/, "").trim())
+          .filter(Boolean);
+      }
+
+      function parsePlatformNames(value, payload) {
+        const labels = PLATFORM_OPTIONS.map((item) => item.label);
+        const text = cleanMdText(value);
+        const found = labels.filter((label) => text.includes(label));
+        if (found.length) return found;
+        return payload.platforms.length ? payload.platforms.map(platformLabel) : labels;
+      }
+
+      function inferIssueLocation(issueText, evidenceText, payload) {
+        const source = `${issueText}\n${evidenceText}`;
+        if ((payload.text || "") && source && (payload.text.includes(source) || source.includes("文案") || source.includes("字幕") || source.includes("口播") || source.includes("落地页"))) {
+          return "内容文本";
+        }
+        if ((payload.documentText || "") && source && (payload.documentText.includes(source) || source.includes("文件") || source.includes("文档"))) {
+          return "上传文档";
+        }
+        if (source.includes("Image") || source.includes("关键帧") || source.includes(".mp4") || source.includes("画面")) {
+          return "视频 / 图片素材";
+        }
+        return "整体内容";
+      }
+
+      function normalizeMarkdownRiskLevel(value) {
+        const text = cleanMdText(value).toLowerCase();
+        if (text.includes("高") || text.includes("high")) return "High";
+        if (text.includes("中") || text.includes("medium")) return "Medium";
+        if (text.includes("低") || text.includes("low")) return "Low";
+        return "";
+      }
+
+      function highestIssueLevel(issues) {
+        if ((issues || []).some((item) => item.level === "High")) return "High";
+        if ((issues || []).some((item) => item.level === "Medium")) return "Medium";
+        return "Low";
+      }
+
+      function calculateIssueScore(issues) {
+        if (!(issues || []).length) return 92;
+        let score = 92;
+        for (const issue of issues) {
+          if (issue.level === "High") score -= 24;
+          else if (issue.level === "Medium") score -= 12;
+          else score -= 6;
+        }
+        return clamp(score, 16, 96);
+      }
+
+      function recommendationFromIssues(issues) {
+        const level = highestIssueLevel(issues);
+        if (level === "High") return "暂停发布";
+        if (level === "Medium") return "建议修改后发布";
+        return "风险较低，可发布";
       }
 
       function scanClientRules(payload) {
