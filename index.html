@@ -622,7 +622,7 @@
         border-radius: 999px;
         display: grid;
         place-items: center;
-        background: conic-gradient(var(--accent) var(--score-angle, 0deg), #e9edf7 0deg);
+        background: conic-gradient(var(--ring-color, var(--accent)) var(--score-angle, 0deg), #e9edf7 0deg);
         position: relative;
       }
 
@@ -632,6 +632,7 @@
         inset: 10px;
         border-radius: 999px;
         background: #fff;
+        box-shadow: inset 0 0 0 1px var(--ring-soft, var(--accent-soft));
       }
 
       .score-value {
@@ -644,6 +645,7 @@
         display: block;
         font-size: 30px;
         line-height: 1;
+        color: var(--ring-color, var(--accent));
       }
 
       .score-value span {
@@ -658,8 +660,8 @@
         min-height: 34px;
         padding: 0 12px;
         border-radius: 999px;
-        background: var(--accent-soft);
-        color: var(--accent-ink);
+        background: var(--advice-soft, var(--accent-soft));
+        color: var(--advice-color, var(--accent-ink));
         font-size: 13px;
         font-weight: 700;
       }
@@ -1591,6 +1593,27 @@
           : `<div class="helper-card"><strong>未选择平台</strong><p>至少保留一个平台，系统才会输出平台间风险差异。</p></div>`;
       }
 
+      function renderRiskSummary(result) {
+        const recommendationTone = getRecommendationTone(result.recommendation);
+        const points = result.topRisks.length
+          ? result.topRisks.map((item) => `<div class="risk-point">- ${escapeHtml(item)}</div>`).join("")
+          : `<div class="risk-point">- 暂未检测到明显高风险表达，发布前仍建议人工复核画面、标题和转化引导。</div>`;
+
+        elements.riskSummaryCard.innerHTML = `
+          <div class="score-ring" style="--score-angle:${Math.max(0, Math.min(100, result.score)) * 3.6}deg; --ring-color:${recommendationTone.color}; --ring-soft:${recommendationTone.soft}">
+            <div class="score-value">
+              <strong>${result.score}</strong>
+              <span>/ 100</span>
+            </div>
+          </div>
+          <div>
+            <div class="subtle">总体风险评分</div>
+            <div style="margin-top:8px"><span class="advice" style="--advice-soft:${recommendationTone.soft}; --advice-color:${recommendationTone.color}">${escapeHtml(result.recommendation)}</span></div>
+            <div class="risk-points">${points}</div>
+          </div>
+        `;
+      }
+
       function buildIssuesHtml(result) {
         return result.issues.length
           ? result.issues
@@ -2089,6 +2112,17 @@
         if (score < 65) return "建议修改后发布";
         if (score < 82) return "可发布，但建议优化";
         return "风险较低，可发布";
+      }
+
+      function getRecommendationTone(recommendation) {
+        const text = String(recommendation || "");
+        if (text.includes("风险较低") || (text.includes("可发布") && !text.includes("建议"))) {
+          return { color: "var(--low)", soft: "var(--low-soft)" };
+        }
+        if (text.includes("建议修改") || text.includes("建议优化") || text.includes("轻微修改")) {
+          return { color: "var(--medium)", soft: "var(--medium-soft)" };
+        }
+        return { color: "var(--high)", soft: "var(--high-soft)" };
       }
 
       function buildPlatformRisks(platformIds, findings, payload) {
