@@ -1226,6 +1226,11 @@
         { id: "markdown", label: "Markdown Report" },
       ];
 
+      const DEFAULT_INDUSTRY = "金融 / 投资 / 贷款";
+      const DEFAULT_CONTENT_TYPE = "自媒体发布";
+      const DEFAULT_REGIONS = [...REGION_OPTIONS];
+      const DEFAULT_PLATFORMS = ["wechat", "rednote"];
+
       const state = {
         files: [],
         assets: [],
@@ -1233,8 +1238,8 @@
         markdown: "",
         result: null,
         activeTab: "overview",
-        regions: new Set(REGION_OPTIONS),
-        platforms: new Set(PLATFORM_OPTIONS.map((item) => item.id)),
+        regions: new Set(DEFAULT_REGIONS),
+        platforms: new Set(DEFAULT_PLATFORMS),
       };
 
       const elements = {
@@ -1261,6 +1266,7 @@
       };
 
       bindEvents();
+      applyDefaultReviewSettings();
       renderSelectors();
       renderFiles();
       renderComparison();
@@ -1322,6 +1328,13 @@
       function renderChip(label, active, type, value = label) {
         const dataAttr = type === "region" ? `data-region="${escapeHtml(value)}"` : `data-platform="${escapeHtml(value)}"`;
         return `<button class="chip ${active ? "active" : ""}" type="button" ${dataAttr}>${escapeHtml(label)}</button>`;
+      }
+
+      function applyDefaultReviewSettings() {
+        elements.industry.value = DEFAULT_INDUSTRY;
+        elements.contentType.value = DEFAULT_CONTENT_TYPE;
+        state.regions = new Set(DEFAULT_REGIONS);
+        state.platforms = new Set(DEFAULT_PLATFORMS);
       }
 
       async function syncFilesFromInputs() {
@@ -2180,12 +2193,13 @@
 
       function loadSample() {
         elements.text.value =
-          "2026 澳洲预算案后，房产投资人必须马上调整策略。现在立刻取消负扣税，房价会暴跌，抓紧咨询获取方案。\n\n字幕 / 口播稿：这条视频会告诉你预算案调整后房价会怎么走，哪些投资人会受到影响，以及为什么现在必须马上处理。\n\n补充信息：画面包含政策解读图卡、房价走势箭头、结尾咨询引导，以及一页带有二维码的联系方式页。";
-        elements.industry.value = "金融 / 投资 / 贷款";
-        elements.contentType.value = "自媒体发布";
-        state.regions = new Set(REGION_OPTIONS);
+          `2026 澳洲预算案后，房产投资人需要重新评估策略。
+
+字幕 / 口播稿：这条内容围绕税务改革、房价变化和投资风险展开。
+
+补充信息：画面包含政策解读图卡、房价走势图和结尾咨询引导。`;
+        applyDefaultReviewSettings();
         elements.regionCustom.value = "";
-        state.platforms = new Set(["facebook", "instagram", "wechat", "rednote", "youtube", "metaads"]);
         renderSelectors();
         renderComparison();
         if (!state.result) renderResults();
@@ -2196,8 +2210,7 @@
         elements.videoInput.value = "";
         elements.docInput.value = "";
         elements.text.value = "";
-        elements.industry.value = "通用内容 / 品牌";
-        elements.contentType.value = "自媒体发布";
+        applyDefaultReviewSettings();
         elements.regionCustom.value = "";
         state.files = [];
         state.assets = [];
@@ -2205,13 +2218,11 @@
         state.markdown = "";
         state.result = null;
         state.activeTab = "overview";
-        state.regions = new Set(REGION_OPTIONS);
-        state.platforms = new Set(PLATFORM_OPTIONS.map((item) => item.id));
         elements.shareCard.hidden = true;
         renderSelectors();
         renderFiles();
         renderComparison();
-        setStatus("", "已清空当前内容。可重新上传素材或粘贴文案。");
+        setStatus("", "已清空当前内容，可重新上传素材或粘贴文案。");
         renderResults();
       }
 
