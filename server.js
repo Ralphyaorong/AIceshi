@@ -495,24 +495,44 @@ async function callAi(payload, selectedPlatforms, localFindings) {
     },
   ];
 
+  return requestAiWithFallback({ messages });
+}
+
+async function requestAiWithFallback({
+  messages,
+  modelCandidates = aiModelCandidates,
+  fetchImpl = fetch,
+  baseUrl = aiBaseUrl,
+  apiKey = aiKey,
+}) {
   const attemptedModels = [];
   const errors = [];
 
-  for (const modelName of aiModelCandidates) {
+  for (const modelName of modelCandidates) {
     attemptedModels.push(modelName);
 
-    const res = await fetch(`${aiBaseUrl.replace(/\/$/, "")}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${aiKey}`,
-      },
-      body: JSON.stringify({
-        model: modelName,
-        messages,
-        temperature: 0.2,
-      }),
-    });
+    let res;
+    try {
+      res = await fetchImpl(`${baseUrl.replace(/\/$/, "")}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: modelName,
+          messages,
+          temperature: 0.2,
+        }),
+      });
+    } catch (error) {
+      const errorMessage = formatAiThrownError(error, modelName);
+      if (shouldTryNextAiModel(error, error?.status) && attemptedModels.length < modelCandidates.length) {
+        errors.push(errorMessage);
+        continue;
+      }
+      throw new Error(errorMessage);
+    }
 
     const json = await res.json().catch(() => ({}));
     const responseText = normalizeAiContent(json.choices?.[0]?.message?.content);
@@ -526,7 +546,7 @@ async function callAi(payload, selectedPlatforms, localFindings) {
     }
 
     const errorMessage = formatAiError(json, res.status, modelName);
-    if (shouldTryNextAiModel(errorMessage, res.status) && attemptedModels.length < aiModelCandidates.length) {
+    if (shouldTryNextAiModel(json, res.status) && attemptedModels.length < modelCandidates.length) {
       errors.push(errorMessage);
       continue;
     }
@@ -537,8 +557,8 @@ async function callAi(payload, selectedPlatforms, localFindings) {
   throw new Error(errors.join(" | ") || "AI 请求失败");
 }
 
-function shouldTryNextAiModel(message, status) {
-  const text = String(message || "").toLowerCase();
+function shouldTryNextAiModel(errorPayload, status) {
+  const text = collectAiErrorSignals(errorPayload);
   if (status === 429 || status >= 500) return true;
   return [
     "allocationquota.freetieronly",
@@ -550,15 +570,47 @@ function shouldTryNextAiModel(message, status) {
     "resource exhausted",
     "rate limit",
     "temporarily unavailable",
+    "invalid model",
+    "invalid_model",
+    "model_not_found",
     "model not found",
+    "model_unavailable",
+    "unsupported model",
+    "unsupported_model",
+    "unsupported modality",
+    "unsupported_modality",
     "does not exist",
-    "do not have access"
+    "do not have access",
+    "not available for this account",
+    "param:model",
+    "param:model_name",
   ].some((needle) => text.includes(needle));
+}
+
+function collectAiErrorSignals(errorPayload) {
+  return [
+    errorPayload?.error?.code,
+    errorPayload?.error?.type,
+    errorPayload?.error?.param,
+    errorPayload?.error?.message,
+    errorPayload?.code,
+    errorPayload?.type,
+    errorPayload?.param,
+    errorPayload?.message,
+  ]
+    .filter(Boolean)
+    .map((value) => String(value).trim().toLowerCase())
+    .map((value) => (value === "model" || value === "model_name" ? `param:${value}` : value))
+    .join(" | ");
 }
 
 function formatAiError(json, status, modelName) {
   const message = json.error?.message || json.message || `AI 请求失败（${status}）`;
   return `[${modelName}] ${message}`;
+}
+
+function formatAiThrownError(error, modelName) {
+  return `[${modelName}] ${error?.message || "AI request failed"}`;
 }
 
 function normalizeAiContent(content) {
@@ -859,8 +911,23 @@ function loadEnv() {
   }
 }
 
-server.listen(port, host, () => {
-  console.log(`Content compliance checker running on ${host}:${port}`);
-  console.log(`AI: ${aiKey ? "enabled" : "disabled"} provider=${aiProvider} models=${aiModelCandidates.join(",")}`);
-});
+function startServer() {
+  server.listen(port, host, () => {
+    console.log(`Content compliance checker running on ${host}:${port}`);
+    console.log(`AI: ${aiKey ? "enabled" : "disabled"} provider=${aiProvider} models=${aiModelCandidates.join(",")}`);
+  });
+}
+
+if (require.main === module) {
+  startServer();
+}
+
+module.exports = {
+  callAi,
+  collectAiErrorSignals,
+  formatAiError,
+  requestAiWithFallback,
+  shouldTryNextAiModel,
+  startServer,
+};
 
